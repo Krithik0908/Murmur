@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/orchestrator/db";
 import { AgentRun, Correction } from "@/lib/orchestrator/schema";
 import {
@@ -32,7 +32,7 @@ const RUNNERS: Record<AgentId, RunnerFn> = {
   deployRisk:  runDeployRiskAgent,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Core cascade propagation logic.
 //
 // Steps:
@@ -40,9 +40,9 @@ const RUNNERS: Record<AgentId, RunnerFn> = {
 //  2. Re-run each cascade agent in topological order:
 //     a. Mark "rerunning"
 //     b. Inject corrected context (humanCorrection only on the target agent)
-//     c. Persist output → mark "done"
+//     c. Persist output ΓåÆ mark "done"
 //  4. Agents NOT in the cascade are never touched.
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 async function propagateCascade(
   runId: string,
   correctedAgent: AgentId,
@@ -50,13 +50,13 @@ async function propagateCascade(
 ) {
   const cascadeOrder = getCascadeOrder(correctedAgent);
 
-  // ① Mark entire cascade "stale" in one batch write
+  // Γæá Mark entire cascade "stale" in one batch write
   await AgentRun.updateMany(
     { runId, agentId: { $in: cascadeOrder } },
     { status: "stale", lastUpdated: new Date() }
   );
 
-  // ② Re-run cascade agents in order
+  // Γæí Re-run cascade agents in order
   for (const agentId of cascadeOrder) {
     const isTarget = agentId === correctedAgent;
 
@@ -109,7 +109,7 @@ async function propagateCascade(
         { runId, agentId },
         {
           status:      "done",
-          decision:    "Re-run error — check server logs.",
+          decision:    "Re-run error ΓÇö check server logs.",
           reasoning:   String(err),
           summary:     "Error during re-run.",
           lastUpdated: new Date(),
@@ -121,11 +121,11 @@ async function propagateCascade(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // POST /api/propagate
 // Body: { runId, agentId, correctionText }
 // Returns: { accepted, agentId, downstreamAffected }
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 export async function POST(req: NextRequest) {
   await connectDB();
 
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
     downstreamAffected,
   });
 
-  // Fire cascade — intentionally not awaited so we respond immediately
+  // Fire cascade ΓÇö intentionally not awaited so we respond immediately
   propagateCascade(runId, agentId, correctionText).catch((err) =>
     console.error("[Murmur][propagate] Cascade error:", err)
   );

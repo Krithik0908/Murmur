@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { connectDB } from "@/lib/orchestrator/db";
 import { AgentRun } from "@/lib/orchestrator/schema";
@@ -23,19 +23,19 @@ const RUNNERS: Record<AgentId, RunnerFn> = {
   deployRisk:  runDeployRiskAgent,
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sequential pipeline runner — runs agents one-by-one, updating DB after each.
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Sequential pipeline runner ΓÇö runs agents one-by-one, updating DB after each.
 // Fired in the background so POST /api/spawn returns immediately.
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 async function runPipeline(runId: string) {
   for (const agentId of AGENT_ORDER) {
-    // ① Mark agent as running
+    // Γæá Mark agent as running
     await AgentRun.findOneAndUpdate(
       { runId, agentId },
       { status: "running", lastUpdated: new Date() }
     );
 
-    // ② Build upstream context from database state of dependencies
+    // Γæí Build upstream context from database state of dependencies
     const upstreamContext: UpstreamContext[] = [];
     for (const dep of DEPENDENCY_GRAPH[agentId]) {
       const depDoc = await AgentRun.findOne({ runId, agentId: dep }).lean();
@@ -60,7 +60,7 @@ async function runPipeline(runId: string) {
 
       const output = await runner(agentInput);
 
-      // ③ Persist output + mark done
+      // Γæó Persist output + mark done
       await AgentRun.findOneAndUpdate(
         { runId, agentId },
         {
@@ -77,7 +77,7 @@ async function runPipeline(runId: string) {
         { runId, agentId },
         {
           status:      "done",
-          decision:    "Agent error — check server logs.",
+          decision:    "Agent error ΓÇö check server logs.",
           reasoning:   String(err),
           summary:     "Error during execution.",
           lastUpdated: new Date(),
@@ -90,11 +90,11 @@ async function runPipeline(runId: string) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // POST /api/spawn
 // Body: none
 // Returns: { runId }
-// ─────────────────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 export async function POST() {
   await connectDB();
 
@@ -114,7 +114,7 @@ export async function POST() {
     }))
   );
 
-  // Fire pipeline — intentionally not awaited
+  // Fire pipeline ΓÇö intentionally not awaited
   runPipeline(runId).catch((err) =>
     console.error("[Murmur][spawn] Pipeline error:", err)
   );
