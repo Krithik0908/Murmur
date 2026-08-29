@@ -28,8 +28,7 @@ export function getGroqClient(): Groq {
   return _groqClient;
 }
 
-// The model specified in the README and project architecture
-export const GROQ_MODEL = "llama-3.3-70b-versatile";
+export const GROQ_MODEL = "openai/gpt-oss-20b";
 
 // ---------------------------------------------------------------------------
 // JSON extraction / parsing

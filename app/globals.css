@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Vexel-inspired Design Tokens ─── */
+:root {
+  --col-bg:       #000000;
+  --col-surface:  #141414;
+  --col-border:   #222222;
+  --col-primary:  #0083ff;
+  --col-text:     #ffffff;
+  --col-muted:    #888888;
+  --col-done:     #22c55e;
+  --col-stale:    #f59e0b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Dot pulse for running/rerunning badges ─── */
+@keyframes pulse-ring {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(1.5); }
+}
+.dot-pulse {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  animation: pulse-ring 1.2s ease-in-out infinite;
+}
+
+/* ─── Card flash on correction ─── */
+@keyframes card-flash {
+  0%   { background-color: rgba(0,131,255,0.12); }
+  100% { background-color: #141414; }
+}
+.card-flashed { animation: card-flash 0.8s ease-out; }
+
+/* ─── SVG edge animation ─── */
+@keyframes dash-flow      { to { stroke-dashoffset: -24; } }
+@keyframes dash-flow-fast { to { stroke-dashoffset: -24; } }
+
+.path-idle    { stroke: #222222; }
+.path-active  {
+  stroke: #0083ff;
+  stroke-dasharray: 8 5;
+  animation: dash-flow 1.2s linear infinite;
+  filter: drop-shadow(0 0 4px #0083ff);
+}
+.path-cascade {
+  stroke: #f59e0b;
+  stroke-dasharray: 8 5;
+  animation: dash-flow-fast 0.7s linear infinite;
+  filter: drop-shadow(0 0 4px #f59e0b);
+}
+.path-done {
+  stroke: #22c55e;
+  stroke-dasharray: 8 5;
+  animation: dash-flow 2s linear infinite;
+  opacity: 0.6;
+}
+
+/* ─── Log scrollbar ─── */
+.log-terminal::-webkit-scrollbar { width: 4px; }
+.log-terminal::-webkit-scrollbar-track { background: #0a0a0a; }
+.log-terminal::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
