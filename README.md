@@ -1,26 +1,27 @@
-# TRACE — Targeted Re-execution for Agent Correction and Execution
+# Murmur — Live Correction Propagation for DevSecOps Agent Swarms
 
-> **Hackathon:** Tenori Stateless Hackathon (Tenori Labs × Stateless × LICET)
-> **Track:** Track 02 — Agentic Web, Swarms & Harnesses
+> **Hackathon:** Tenori Stateless Hackathon (Tenori Labs × Stateless × LICET)  
+> **Track:** Track 02 — Agentic Web, Swarms & Harnesses  
+> **Aesthetic:** Vexel AI Flat Editorial System (pure black, sharp edges, `#0083ff` blue primary accent)
 
 ---
 
 ## The Problem
 
-DevSecOps pipelines are moving from single-step automation toward coordinated AI agents making real judgment calls — how to remediate a vulnerability, which patch to apply, whether it's safe to deploy. Full autonomy isn't trusted for these decisions yet: a wrong autonomous call can mean a broken production system, an unpatched security hole, or a compliance violation.
+DevSecOps pipelines are moving from single-step automation toward coordinated AI agents making real judgment calls — how to remediate a vulnerability, which patch to apply, and whether it's safe to deploy. Full autonomy isn't trusted for these critical release-gate decisions yet: a wrong autonomous call can result in a broken production system, an unpatched security hole, or a compliance violation.
 
-But today, when a human expert corrects one agent's decision mid-pipeline, **nothing propagates that correction to the other agents already reasoning from the original, now-wrong call.** They keep planning from stale information. The only fallback is restarting the entire pipeline from scratch — throwing away all the completed work.
+But today, when a human expert corrects one agent's decision mid-pipeline, **nothing propagates that correction to the other agents already reasoning from the original, now-wrong call.** They keep planning from stale information. The only fallback is restarting the entire pipeline from scratch, throwing away all completed work.
 
 ---
 
 ## The Solution
 
-TRACE maintains a **dependency graph of agent decisions** (not files — decisions). When a security engineer overrides one agent's output mid-run:
+Murmur maintains a **dependency graph of agent decisions** (not files — decisions). When a security engineer overrides one agent's output mid-run:
 
-1. TRACE BFS-walks the dependency graph to find every downstream agent whose reasoning depended on the changed decision
-2. Marks those agents as stale
-3. Re-runs only those agents, injecting the corrected context into their prompts
-4. Leaves everything upstream and unrelated **untouched and still valid**
+1. **Graph Traversal:** Murmur walks the dependency graph using a Breadth-First Search (BFS) to identify every downstream agent whose reasoning depended on the changed decision.
+2. **State Invalidation:** Downstream dependent agents are marked as `stale`.
+3. **Targeted Re-execution:** Only the stale agents re-run, injecting the corrected context into their prompts.
+4. **Conservation:** Everything upstream and unrelated remains **untouched, static, and still valid**.
 
 No full restart. No wasted work. No stale plan silently shipping.
 
@@ -28,43 +29,37 @@ No full restart. No wasted work. No stale plan silently shipping.
 
 ---
 
-## How TRACE Works
+## How Murmur Works
 
 ```
 POST /api/spawn
-  → run Triage          → save to MongoDB
-  → run Remediation     → save
-  → run Test-Impact     → save
-  → run Deploy-Risk     → save
+  → Connects DB (Atlas or local fallback)
+  → Runs Triage, Remediation, Test-Impact, Deploy-Risk in sequence
+  → Saves run document state
 
 POST /api/propagate  { runId, agentId, correctionText }
-  → BFS-walk graph from corrected agent
-  → mark transitive dependents "stale"
-  → re-invoke each stale agent with corrected upstream context
-  → save updated results
+  → Performs BFS-walk from corrected agent node
+  → Marks transitive dependents "stale" in DB
+  → Asynchronously re-invokes affected agents with the human override context
 
 GET /api/snapshot?runId=<id>
-  → return current state of all agents (polled every 1–2 s by the UI)
+  → Returns current state of all agents (polled by the UI to draw real-time flow)
 ```
 
 ---
 
-## The Four Agents
+## The Swarm Graph
 
-| Agent | Depends On | Decision Vocabulary |
-|---|---|---|
-| **Triage** | — | `REMEDIATE` · `MONITOR` · `DISMISS` |
-| **Remediation** | Triage | `UPGRADE` · `PATCH` · `PIN` · `REPLACE` · `DEFER` |
-| **Test-Impact** | Remediation | `TARGETED_TESTS` · `FULL_REGRESSION` · `SMOKE_TESTS` · `NO_ADDITIONAL_TESTS` |
-| **Deploy-Risk** | Remediation + Test-Impact | `GO` · `GO_WITH_GUARDRAILS` · `HOLD` |
-
-Every agent returns: `{ decision, reasoning, summary }` — a controlled-vocabulary token, a 2–5 sentence explanation, and a 1–2 sentence UI summary.
-
-Human corrections are injected into the prompt as an authoritative override. The agent re-evaluates its decision in light of the correction and explains the change in its reasoning.
-
----
-
-## Dependency Graph
+```
+  ┌─────────┐       ┌──────────────┐       ┌─────────────┐
+  │ Triage  │ ────▶ │ Remediation  │ ────▶ │ Test Impact │
+  └─────────┘       └──────────────┘       └─────────────┘
+                           │                      │
+                           │                      ▼
+                           └───────────────▶ ┌─────────────┐
+                                             │ Deploy Risk │
+                                             └─────────────┘
+```
 
 ```json
 {
@@ -75,120 +70,53 @@ Human corrections are injected into the prompt as an authoritative override. The
 }
 ```
 
-Correcting **Triage** cascades to all three downstream agents.
-Correcting **Remediation** cascades to Test-Impact and Deploy-Risk only — Triage is upstream and is never touched.
+* **Large Cascade:** Correcting **Triage** cascades to all three downstream agents.
+* **Small Cascade:** Correcting **Remediation** cascades to Test-Impact and Deploy-Risk only — Triage is upstream and remains static.
 
 ---
 
-## Demo Scenario
+## Setup & Run
 
-**CVE-2024-3094** — XZ Utils / liblzma supply-chain backdoor (CVSS 3.1: **10.0 CRITICAL**)
-
-A malicious contributor (Jia Tan) injected a backdoor into xz-utils 5.6.0 and 5.6.1 that subverts OpenSSH's RSA key decryption path on systems where sshd is linked against systemd + liblzma. Our simulated production API gateway container was automatically upgraded to 5.6.1 during a routine OS image rebuild.
-
-### Demo A — Large cascade
-
-Correct **Triage** with: `This server does not use systemd-linked sshd. The vulnerable execution path does not exist. Treat as MONITOR only.`
-
-→ All three downstream agents (Remediation, Test-Impact, Deploy-Risk) become stale and re-run.
-
-### Demo B — Small cascade
-
-Correct **Remediation** with: `Apply vendor patch instead of rebuilding the Docker image. Mark as PATCH, not PIN.`
-
-→ Only Test-Impact and Deploy-Risk re-run. Triage stays green — untouched.
-
-See [`demo/demo-script.md`](demo/demo-script.md) for the full step-by-step script and [`person4/demo-script.md`](person4/demo-script.md) for the detailed narrated version.
-
----
-
-## Architecture
-
-See [`docs/architecture.md`](docs/architecture.md) for the full architecture diagram, BFS propagation walkthrough, data model, and API contract.
-
----
-
-## Setup
-
+### 1. Configure Environment
+Copy the env template:
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Copy environment template
 cp .env.example .env.local
+```
+Fill in your credentials in `.env.local`:
+```env
+MONGODB_URI=mongodb+srv://...
+GROQ_API_KEY=gsk_...
+```
 
-# 3. Fill in real credentials in .env.local
-#    GROQ_API_KEY=gsk_...        (from https://console.groq.com)
-#    MONGODB_URI=mongodb+srv://... (from MongoDB Atlas)
-
-# 4. Run development server
+### 2. Install & Start Dev Server
+```bash
+npm install
 npm run dev
 ```
+Open [http://localhost:3000](http://localhost:3000) to view the live dashboard.
 
-Open [http://localhost:3000](http://localhost:3000).
-
-### Environment Variables
-
-| Variable | Description | Where to get |
-|---|---|---|
-| `GROQ_API_KEY` | Groq API key | https://console.groq.com |
-| `MONGODB_URI` | MongoDB Atlas connection string | https://cloud.mongodb.com |
-
----
-
-## Running Tests
-
-```bash
-npm test
-```
-
-Tests cover the agent logic layer only (no real API calls — Groq is mocked).
-
-```
-PASS agents/__tests__/agents.test.ts
-  Triage Agent          8 tests
-  Remediation Agent     3 tests
-  TestImpact Agent      3 tests
-  DeployRisk Agent      3 tests
-  Full pipeline chain   1 test
-  Upstream context      1 test
-
-Tests: 19 passed, 19 total
-```
+> [!TIP]
+> **Zero-Config/Offline Support:** Murmur features a **Hybrid DB mode**. If it cannot connect to MongoDB Atlas (e.g. port 27017 is blocked by a college firewall), it automatically falls back to a local, fast in-memory database store so the demo runs instantly and offline out-of-the-box.
 
 ---
 
 ## Technology Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 15 (App Router) |
-| Language | TypeScript 5 |
-| LLM | Groq API — `llama-3.3-70b-versatile` |
-| Database | MongoDB Atlas + Mongoose 8 |
-| Styling | Tailwind CSS 3 |
-| Testing | Jest 30 + ts-jest |
+* **Framework:** Next.js 15 (App Router)
+* **Language:** TypeScript 5
+* **LLM Engine:** Groq API — `openai/gpt-oss-20b` (extremely fast, low latency)
+* **Database:** MongoDB Atlas (Production) / Local In-Memory Store (Offline/Local Fallback)
+* **Design & Styling:** Vexel AI Theme (Pure black `#000000`, surfaces `#141414`, borders `#222222`, primary `#0083ff`)
+* **Testing:** Jest 30 + ts-jest
 
 ---
 
-## What TRACE Is Not
+## What Murmur Is Not
 
-| Tool | What it does | Why it's not TRACE |
+| System | What it does | Why it's not Murmur |
 |---|---|---|
-| LangGraph, CrewAI, AutoGen | Multi-agent routing and handoff | Solves routing, not correction propagation |
-| Bitbucket Agentic Pipelines | Live-steer one agent mid-task | No swarm-wide propagation; single-agent |
-| Bazel, Nx, Turborepo | Dependency-aware selective rebuild | Tracks file changes, not agent decisions |
-| HITL research systems | Human-in-the-loop checkpoints | Pause/resume, not selective re-propagation |
+| LangGraph, CrewAI | Multi-agent routing | Solves routing, not correction propagation |
+| Bitbucket Agentic Pipelines | Live-steer one agent | Single-agent execution, no swarm-wide cascade |
+| Bazel, Turborepo | Selective rebuild | Tracks file changes, not agent decisions |
 
-TRACE's specific contribution: **human-triggered, decision-dependency-aware, selective agent re-execution** — in a domain where full autonomy is explicitly not yet trusted.
-
----
-
-## Team
-
-| Person | Ownership |
-|---|---|
-| **Person 1** | `agents/` — four AI agents, prompts, Groq calls, seed scenario |
-| **Person 2** | `lib/orchestrator/`, `app/api/` — dependency graph, BFS, MongoDB, API routes |
-| **Person 3** | `app/(ui)/`, `components/` — pipeline UI, agent cards, polling |
-| **Person 4** | `person4/`, `docs/`, `demo/`, `README.md` — integration, demo, pitch |
+Murmur's specific contribution: **human-triggered, decision-dependency-aware, selective agent re-execution** — in a domain where full autonomy is explicitly not yet trusted.
