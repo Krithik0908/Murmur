@@ -53,7 +53,7 @@ export default function EventLog({ logs, onClear }: EventLogProps) {
   }
 
   return (
-    <div className="paper-card-navy flex flex-col h-full rounded-2xl border border-navy-700/80 overflow-hidden shadow-paper-lg">
+    <div className="paper-card-navy flex flex-col rounded-2xl border border-white/10 overflow-hidden shadow-paper-lg">
       {/* Log Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-navy-700/80 bg-navy-900/60">
         <div className="flex items-center gap-2">
@@ -77,9 +77,9 @@ export default function EventLog({ logs, onClear }: EventLogProps) {
       </div>
 
       {/* Log Entries */}
-      <div className="flex-1 p-3.5 overflow-y-auto space-y-2 font-mono text-xs max-h-[300px] min-h-[200px]">
+      <div className="flex-1 p-3.5 overflow-y-auto space-y-2 font-mono text-xs">
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center h-36 text-navy-400 font-mono italic text-[11px]">
+          <div className="flex items-center justify-center py-6 text-[#a49db5] font-mono italic text-[11px]">
             No activity recorded yet. Click "Spawn Swarm Pipeline" to trigger agent dispatch.
           </div>
         ) : (

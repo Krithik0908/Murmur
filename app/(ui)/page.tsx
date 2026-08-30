@@ -21,6 +21,7 @@ import {
 import PipelineView from "@/components/PipelineView";
 import EventLog from "@/components/EventLog";
 import CorrectionInput from "@/components/CorrectionInput";
+import ResponsiveHeroBanner from "@/components/ui/responsive-hero-banner";
 import {
   Play,
   RotateCcw,
@@ -37,12 +38,319 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 
+const LANDING_NAV_LINKS = [
+  { label: "Home", href: "#home", active: true },
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Console", href: "#console" },
+  { label: "Docs", href: "#docs" },
+];
+
+const LANDING_PARTNERS = [
+  { name: "Groq", detail: "Llama 3.3 70B" },
+  { name: "MongoDB Atlas", detail: "Hybrid DB Layer" },
+  { name: "Next.js", detail: "App Router" },
+];
+
+const LANDING_HOW_IT_WORKS = [
+  {
+    step: "01",
+    title: "Swarm runs the job",
+    body: "Four agents execute sequentially on a real CVE so every decision has a visible upstream source.",
+  },
+  {
+    step: "02",
+    title: "Human corrects one agent",
+    body: "A security engineer overrides a mid-flight decision instead of restarting the whole pipeline.",
+  },
+  {
+    step: "03",
+    title: "BFS traces dependents",
+    body: "Murmur uses a deterministic graph walk to find exactly which downstream agents relied on the changed decision.",
+  },
+  {
+    step: "04",
+    title: "Only affected agents re-run",
+    body: "Upstream work stays intact while only the impacted branch replays with fresh context.",
+  },
+];
+
+const HERO_ARC_SVG = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+    <defs>
+      <linearGradient id="murmurGlow" x1="120" y1="120" x2="1120" y2="540" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#9a8afb" stop-opacity="0" />
+        <stop offset="0.35" stop-color="#9a8afb" stop-opacity="0.18" />
+        <stop offset="0.7" stop-color="#9a8afb" stop-opacity="0.48" />
+        <stop offset="1" stop-color="#9a8afb" stop-opacity="0" />
+      </linearGradient>
+    </defs>
+    <path d="M180 510C360 250 590 162 860 190C1020 207 1120 268 1192 344" stroke="url(#murmurGlow)" stroke-width="10" stroke-linecap="round" />
+    <path d="M188 500C364 258 594 174 858 202C1012 218 1108 278 1182 352" stroke="#9a8afb" stroke-opacity="0.16" stroke-width="42" stroke-linecap="round" filter="blur(16px)" />
+    <circle cx="854" cy="200" r="10" fill="#9a8afb" fill-opacity="0.5" />
+    <circle cx="1116" cy="308" r="12" fill="#9a8afb" fill-opacity="0.34" />
+  </svg>
+`).replace(/\n\s+/g, "")}`;
+
+function LandingHowItWorks() {
+  return (
+    <section id="how-it-works" className="mx-auto w-full max-w-7xl px-[30px] pb-[54px] pt-[54px] sm:px-[48px] lg:px-[72px]">
+      <div className="grid gap-[30px] lg:grid-cols-4">
+        {LANDING_HOW_IT_WORKS.map((item) => (
+          <article
+            key={item.step}
+            className="rounded-[20px] border border-white/10 bg-[#1e1c26] p-[30px]"
+          >
+            <div className="text-[30px] font-bold leading-none text-[#ffffff]">{item.step}</div>
+            <h3 className="mt-[30px] text-[18px] font-bold text-[#ffffff]">{item.title}</h3>
+            <p className="mt-[12px] text-[14px] leading-[1.7] text-[#eaeaf0]">{item.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LandingPipelinePreview({ step }: { step: number }) {
+  const triageCascade = step < 4;
+
+  const snapshot = triageCascade
+    ? {
+        label: "Correcting Triage",
+        summary: "A triage correction travels to Remediation, Test-Impact, and Deploy-Risk only.",
+        litArrows: new Set(["triage->remediation", "remediation->testImpact", "remediation->deployRisk"]),
+        cards: {
+          triage: {
+            status: step === 0 ? ("rerunning" as const) : ("done" as const),
+            title: "Triage",
+            summary: CORRECTED_TRIAGE.summary,
+            decision: CORRECTED_TRIAGE.decision,
+          },
+          remediation: {
+            status: step === 1 ? ("rerunning" as const) : step < 1 ? ("stale" as const) : ("done" as const),
+            title: "Remediation",
+            summary:
+              step < 1
+                ? "Marked stale while Triage replays with corrected guidance."
+                : MOCK_DECISIONS.remediation.summary,
+            decision:
+              step < 1
+                ? "Waiting on corrected Triage context."
+                : step === 1
+                  ? "Re-evaluating with corrected Triage context."
+                  : MOCK_DECISIONS.remediation.decision,
+          },
+          testImpact: {
+            status: step === 2 ? ("rerunning" as const) : step < 2 ? ("stale" as const) : ("done" as const),
+            title: "Test-Impact",
+            summary:
+              step < 2
+                ? "Marked stale while Remediation replays."
+                : step === 2
+                  ? "Re-running with corrected Remediation context."
+                  : MOCK_DECISIONS.testImpact.summary,
+            decision:
+              step < 2
+                ? "Waiting on corrected Remediation context."
+                : step === 2
+                  ? "Re-running targeted tests from the corrected patch path."
+                  : MOCK_DECISIONS.testImpact.decision,
+          },
+          deployRisk: {
+            status: step === 3 ? ("rerunning" as const) : step < 3 ? ("stale" as const) : ("done" as const),
+            title: "Deploy-Risk",
+            summary:
+              step < 3
+                ? "Marked stale until Test-Impact finishes."
+                : step === 3
+                  ? "Re-running after the corrected downstream context settles."
+                  : MOCK_DECISIONS.deployRisk.summary,
+            decision:
+              step < 3
+                ? "Waiting on corrected downstream context."
+                : step === 3
+                  ? "Re-evaluating rollout risk after corrected downstream work."
+                  : MOCK_DECISIONS.deployRisk.decision,
+          },
+        },
+      }
+    : {
+        label: "Correcting Remediation",
+        summary: "A Remediation correction leaves Triage untouched and replays only Test-Impact + Deploy-Risk.",
+        litArrows: new Set(["remediation->testImpact", "remediation->deployRisk"]),
+        cards: {
+          triage: {
+            status: "done" as const,
+            title: "Triage",
+            summary: CORRECTED_TRIAGE.summary,
+            decision: CORRECTED_TRIAGE.decision,
+          },
+          remediation: {
+            status: step === 4 ? ("rerunning" as const) : ("done" as const),
+            title: "Remediation",
+            summary: CORRECTED_REMEDIATION.summary,
+            decision:
+              step === 4
+                ? "Re-evaluating with the corrected vendor patch path."
+                : CORRECTED_REMEDIATION.decision,
+          },
+          testImpact: {
+            status: step === 5 ? ("rerunning" as const) : step < 5 ? ("stale" as const) : ("done" as const),
+            title: "Test-Impact",
+            summary:
+              step < 5
+                ? "Marked stale while Remediation replays."
+                : step === 5
+                  ? "Re-running with corrected Remediation context."
+                  : MOCK_DECISIONS.testImpact.summary,
+            decision:
+              step < 5
+                ? "Waiting on corrected Remediation context."
+                : step === 5
+                  ? "Re-running targeted tests from the corrected patch path."
+                  : MOCK_DECISIONS.testImpact.decision,
+          },
+          deployRisk: {
+            status: step === 6 ? ("rerunning" as const) : step < 6 ? ("stale" as const) : ("done" as const),
+            title: "Deploy-Risk",
+            summary:
+              step < 6
+                ? "Marked stale until Test-Impact finishes."
+                : step === 6
+                  ? "Re-running after the corrected downstream context settles."
+                  : MOCK_DECISIONS.deployRisk.summary,
+            decision:
+              step < 6
+                ? "Waiting on corrected downstream context."
+                : step === 6
+                  ? "Re-evaluating rollout risk after corrected downstream work."
+                  : MOCK_DECISIONS.deployRisk.decision,
+          },
+        },
+      };
+
+  const statusStyles: Record<
+    "idle" | "running" | "done" | "stale" | "rerunning",
+    { label: string; badge: string; dot: string; pulse: string }
+  > = {
+    idle: {
+      label: "Idle",
+      badge: "border-white/10 bg-black text-[#a49db5]",
+      dot: "bg-[#767676]",
+      pulse: "",
+    },
+    running: {
+      label: "Running",
+      badge: "border-[#9a8afb]/40 bg-[#9a8afb]/12 text-[#ffffff]",
+      dot: "bg-[#9a8afb]",
+      pulse: "animate-pulse",
+    },
+    done: {
+      label: "Done",
+      badge: "border-white/10 bg-[#1e1c26] text-[#ffffff]",
+      dot: "bg-[#46c17d]",
+      pulse: "",
+    },
+    stale: {
+      label: "Stale",
+      badge: "border-[#d6a94f]/45 bg-[#d6a94f]/10 text-[#ffffff]",
+      dot: "bg-[#d6a94f]",
+      pulse: "animate-pulse",
+    },
+    rerunning: {
+      label: "Re-running",
+      badge: "border-[#d6a94f]/45 bg-[#d6a94f]/14 text-[#ffffff]",
+      dot: "bg-[#d6a94f]",
+      pulse: "animate-pulse",
+    },
+  };
+
+  const cardOrder: Array<keyof typeof snapshot.cards> = ["triage", "remediation", "testImpact", "deployRisk"];
+
+  return (
+    <section className="mx-auto w-full max-w-7xl px-[30px] pb-[54px] sm:px-[48px] lg:px-[72px]">
+      <div className="rounded-[24px] border border-white/10 bg-[#1e1c26] p-[30px] sm:p-[44px]">
+        <div className="flex flex-col gap-[12px] lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-[#a49db5]">
+              Live pipeline preview
+            </p>
+            <h3 className="mt-[12px] text-[24px] font-bold text-[#ffffff]">{snapshot.label}</h3>
+          </div>
+          <p className="max-w-2xl text-[14px] leading-[1.7] text-[#eaeaf0]">{snapshot.summary}</p>
+        </div>
+
+        <div className="mt-[30px] grid gap-[12px] xl:grid-cols-[repeat(4,minmax(0,1fr))]">
+          {cardOrder.map((agentId, index) => {
+            const card = snapshot.cards[agentId];
+            const isActive = card.status === "rerunning";
+            const isStale = card.status === "stale";
+            const status = statusStyles[card.status];
+
+            return (
+              <div key={agentId} className="flex flex-col min-h-[344px]">
+                <article
+                  className={clsx(
+                    "flex h-full min-h-[344px] flex-col rounded-[20px] border bg-black p-[30px] transition-all duration-300",
+                    isActive ? "border-[#9a8afb] shadow-[0_0_0_1px_rgba(154,138,251,0.24)]" : "border-white/10",
+                    isStale && "border-[#d6a94f]/55"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-[12px]">
+                    <div>
+                      <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#a49db5]">{card.title}</p>
+                      <p className="mt-[12px] text-[18px] font-bold text-[#ffffff] break-words">{card.summary}</p>
+                    </div>
+                    <span className={clsx("rounded-[999px] border px-[12px] py-[3px] text-[11px] font-medium", status.badge)}>
+                      {status.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-[30px] flex items-center gap-[9px]">
+                    <span className={clsx("h-[9px] w-[9px] rounded-full", status.dot, status.pulse)} />
+                    <span className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#eaeaf0]">
+                      {isActive ? "Pulse traveling" : isStale ? "Waiting on upstream" : "Decision locked"}
+                    </span>
+                  </div>
+
+                  <div className="mt-[30px] flex-1 rounded-[16px] border border-white/10 bg-[#1e1c26] p-[30px] overflow-auto">
+                    <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#a49db5]">Decision</p>
+                    <p className="mt-[12px] text-[14px] leading-[1.7] text-[#eaeaf0] break-words">{card.decision}</p>
+                  </div>
+                </article>
+
+                {index < cardOrder.length - 1 ? (
+                  <div className="flex items-center justify-center py-[12px] lg:py-0 lg:px-[12px]">
+                    <div
+                      className={clsx(
+                        "flex items-center gap-[9px] rounded-[999px] border px-[12px] py-[3px] text-[11px] font-medium transition-colors duration-300",
+                        snapshot.litArrows.has(`${agentId}->${cardOrder[index + 1]}`)
+                          ? "border-[#9a8afb]/70 bg-[#9a8afb]/12 text-[#ffffff]"
+                          : "border-white/10 bg-black text-[#a49db5]"
+                      )}
+                    >
+                      <ArrowRight className="h-[14px] w-[14px]" />
+                      <span className="hidden lg:inline">
+                        {snapshot.litArrows.has(`${agentId}->${cardOrder[index + 1]}`) ? "Cascade" : "Dependency"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function MurmurPage() {
   const [showLanding, setShowLanding] = useState(true);
   const [pipeline, setPipeline] = useState<PipelineState>(makeIdleState);
   const [flashingAgents, setFlashingAgents] = useState<Set<AgentId>>(new Set());
   const [activeArrows, setActiveArrows] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
+  const [landingStep, setLandingStep] = useState(0);
 
   const timersRef = useRef<NodeJS.Timeout[]>([]);
 
@@ -54,6 +362,18 @@ export default function MurmurPage() {
   useEffect(() => {
     return () => clearTimers();
   }, []);
+
+  useEffect(() => {
+    if (!showLanding) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setLandingStep((current) => (current + 1) % 7);
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [showLanding]);
 
   const addLog = (msg: string, type: LogEntry["type"], agentId?: AgentId) => {
     setPipeline((prev) => ({
@@ -360,91 +680,53 @@ export default function MurmurPage() {
   // ─── Render Landing Page ─────────────────────────────────────────────────────
   if (showLanding) {
     return (
-      <main className="paper-texture-bg min-h-screen text-white flex flex-col items-center justify-center p-4 sm:p-6 md:p-12 relative overflow-hidden selection:bg-white selection:text-navy-950">
-        {/* Decorative Grid Lines */}
-        <div className="absolute inset-0 pointer-events-none opacity-20 border border-white/10 grid grid-cols-6 grid-rows-6">
-          {Array.from({ length: 36 }).map((_, i) => (
-            <div key={i} className="border-t border-l border-white/5" />
-          ))}
-        </div>
+      <main className="min-h-screen bg-black text-[#eaeaf0] selection:bg-[#9a8afb] selection:text-black">
+        <section id="home">
+          <ResponsiveHeroBanner
+            logoUrl="/assets/murmur orange.png"
+            backgroundImageUrl={HERO_ARC_SVG}
+            navLinks={LANDING_NAV_LINKS}
+            ctaButtonText="Open Console"
+            badgeLabel="Live"
+            badgeText="Dependency-aware correction cascading"
+            title="Corrections propagate."
+            titleLine2="Not restarts."
+            description="When a human overrides one agent mid-flight, Murmur traces the decision dependency graph and re-runs only the agents that depend on it — leaving everything else intact."
+            primaryButtonText="Open Swarm Console"
+            secondaryButtonText="Watch Demo"
+            partnersTitle="Powered by"
+            partners={LANDING_PARTNERS}
+            onCtaClick={() => setShowLanding(false)}
+            onPrimaryClick={() => setShowLanding(false)}
+            onSecondaryClick={() => {
+              document.getElementById("pipeline-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        </section>
 
-        <div className="max-w-4xl w-full flex flex-col items-center gap-8 relative z-10 text-center">
-          {/* Swarm Badge */}
-          <div className="animate-fade-in flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-bold bg-white text-navy-950 shadow-lg tracking-wider border border-white uppercase">
-            <Radio className="w-3.5 h-3.5 animate-pulse text-navy-950" />
-            <span>Track 02 — Agentic Web Swarms</span>
-          </div>
+        <LandingHowItWorks />
 
-          {/* Title */}
-          <div className="space-y-3">
-            <h1 className="text-6xl md:text-8xl font-black font-serif tracking-tighter text-white drop-shadow-lg">
-              MURMUR
-            </h1>
-            <p className="text-lg md:text-xl font-mono text-navy-200 font-semibold tracking-wide">
-              Live Correction Propagation for DevSecOps Agent Swarms
-            </p>
-          </div>
+        <section id="pipeline-preview">
+          <LandingPipelinePreview step={landingStep} />
+        </section>
 
-          {/* 3D Animated Agentic AI Swarm Core Visualizer */}
-          <div className="scene-3d my-4 flex items-center justify-center h-64">
-            <div className="sphere-container-3d">
-              <div className="core-3d" />
-              <div className="ring-3d ring-3d-1">
-                <div className="node-3d node-triage" title="Triage Agent" />
+        <section className="mx-auto w-full max-w-7xl px-[30px] pb-[88px] sm:px-[48px] lg:px-[72px]">
+          <div className="rounded-[24px] border border-white/10 bg-[#1e1c26] p-[30px]">
+            <div className="flex flex-wrap items-center justify-between gap-[12px]">
+              <div>
+                <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-[#a49db5]">Console</p>
+                <h3 className="mt-[12px] text-[24px] font-bold text-[#ffffff]">Open the live swarm console</h3>
               </div>
-              <div className="ring-3d ring-3d-2">
-                <div className="node-3d node-remediation" title="Remediation Agent" />
-                <div className="node-3d node-deploy" title="Deploy-Risk Agent" />
-              </div>
-              <div className="ring-3d ring-3d-3">
-                <div className="node-3d node-test" title="Test-Impact Agent" />
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowLanding(false)}
+                className="rounded-[16px] bg-[#9a8afb] px-[30px] py-[12px] text-[14px] font-semibold text-black transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Open Swarm Console
+              </button>
             </div>
           </div>
-
-          {/* Landing Copy / Features */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full text-left mt-2">
-            <div className="paper-card-navy p-5 rounded-2xl border border-navy-700/80 shadow-paper">
-              <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5" />
-                <span>Isolated BFS Cascade</span>
-              </h3>
-              <p className="text-xs text-navy-200 leading-relaxed font-sans font-medium">
-                Calculates the exact decision dependency path. When you override one agent's decision, only downstreams re-run.
-              </p>
-            </div>
-
-            <div className="paper-card-navy p-5 rounded-2xl border border-navy-700/80 shadow-paper">
-              <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5" />
-                <span>Zero Wasted Work</span>
-              </h3>
-              <p className="text-xs text-navy-200 leading-relaxed font-sans font-medium">
-                No full swarm restarts. Avoid throwing away hours of valid static analysis, scanning, and pipeline orchestration.
-              </p>
-            </div>
-
-            <div className="paper-card-navy p-5 rounded-2xl border border-navy-700/80 shadow-paper">
-              <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Swarm Consistency</span>
-              </h3>
-              <p className="text-xs text-navy-200 leading-relaxed font-sans font-medium">
-                Updates decision context in-flight. Downstream planners adapt dynamically, preventing stale releases from shipping.
-              </p>
-            </div>
-          </div>
-
-          {/* Action button */}
-          <button
-            type="button"
-            onClick={() => setShowLanding(false)}
-            className="flex items-center gap-3 px-8 py-4.5 rounded-2xl text-sm font-mono font-bold transition-all shadow-xl bg-white text-navy-950 hover:bg-navy-50 hover:scale-[1.03] active:scale-[0.97]"
-          >
-            <span>Launch Swarm Control Console</span>
-            <ArrowRight className="w-4 h-4 text-navy-950 animate-bounce-x" />
-          </button>
-        </div>
+        </section>
       </main>
     );
   }
@@ -549,7 +831,7 @@ export default function MurmurPage() {
       </section>
 
       {/* ─── Swarm DAG Pipeline Canvas ─── */}
-      <section className="paper-card-navy rounded-2xl p-6 border border-navy-700/80 shadow-paper-xl relative">
+      <section className="paper-card-navy rounded-2xl p-6 border border-white/10 shadow-paper-xl relative">
         <div className="flex items-center justify-between mb-5 pb-3 border-b border-navy-700/80">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-white" />
@@ -590,43 +872,43 @@ export default function MurmurPage() {
       {/* ─── Bottom Panels: Event Stream & Provenance Trail ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: Swarm Event Log */}
-        <div className="lg:col-span-7 h-[360px]">
+        <div className="lg:col-span-7">
           <EventLog logs={pipeline.log} onClear={() => setPipeline((p) => ({ ...p, log: [] }))} />
         </div>
 
         {/* Right: Provenance Trail & Value Proposition */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           {/* White Paper Provenance Sheet */}
-          <div className="paper-card-white rounded-2xl p-5 border border-navy-200 shadow-paper-lg relative overflow-hidden">
+          <div className="paper-card-navy rounded-2xl p-5 border border-white/10 shadow-paper-lg relative overflow-hidden">
             <div className="paper-fold-corner" />
-            <div className="flex items-center justify-between pb-3 border-b border-navy-150">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-navy-950" />
-                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-navy-950">
+                <ShieldCheck className="w-4 h-4 text-white" />
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
                   Correction Provenance Trail
                 </h3>
               </div>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-navy-950 text-white rounded shadow-sm">
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#9a8afb] text-black rounded shadow-sm">
                 {pipeline.corrections.length} recorded
               </span>
             </div>
 
             <div className="mt-3 space-y-3 max-h-[160px] overflow-y-auto pr-1">
               {pipeline.corrections.length === 0 ? (
-                <div className="text-center py-6 text-[11px] text-navy-900 font-mono italic font-bold">
+                <div className="text-center py-6 text-[11px] text-[#a49db5] font-mono italic font-bold">
                   No overrides applied yet. Trigger Beat 1 or Beat 2 above to observe the provenance audit trail.
                 </div>
               ) : (
                 pipeline.corrections.map((corr, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl bg-navy-50 border border-navy-200 text-xs font-mono space-y-1.5 shadow-sm"
+                    className="p-3 rounded-xl bg-black/30 border border-white/10 text-xs font-mono space-y-1.5 shadow-sm"
                   >
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-navy-950 font-bold uppercase tracking-wide">
+                      <span className="text-white font-bold uppercase tracking-wide">
                         {corr.agentId} Overridden
                       </span>
-                      <span className="text-navy-500 font-bold">
+                      <span className="text-[#a49db5] font-bold">
                         {new Date(corr.timestamp).toLocaleTimeString([], {
                           hour12: false,
                           minute: "2-digit",
@@ -634,10 +916,10 @@ export default function MurmurPage() {
                         })}
                       </span>
                     </div>
-                    <p className="text-navy-950 text-[11px] font-sans font-semibold">"{corr.correctionText}"</p>
-                    <div className="flex items-center gap-1.5 text-[10px] text-navy-800 pt-1 border-t border-navy-200">
+                    <p className="text-[#eaeaf0] text-[11px] font-sans font-semibold">"{corr.correctionText}"</p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-[#c2bcd2] pt-1 border-t border-white/10">
                       <span className="font-bold">Affected Downstream:</span>
-                      <span className="text-navy-950 font-black underline">
+                      <span className="text-white font-black underline">
                         {corr.downstreamAffected.join(", ") || "none"}
                       </span>
                     </div>
@@ -648,7 +930,7 @@ export default function MurmurPage() {
           </div>
 
           {/* Deep Navy Swarm Insight Card */}
-          <div className="paper-card-navy rounded-2xl p-5 border border-navy-700/80 shadow-paper flex flex-col gap-2">
+          <div className="paper-card-navy rounded-2xl p-5 border border-white/10 shadow-paper flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs font-mono font-bold text-white">
               <Radio className="w-4 h-4 text-white animate-pulse" />
               <span>Architectural Insight</span>
