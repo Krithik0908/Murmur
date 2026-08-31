@@ -1,126 +1,154 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { LogEntry } from "@/lib/types";
-import {
-  Terminal,
-  CheckCircle,
-  RefreshCw,
-  AlertCircle,
-  Info,
-  Shield,
-  FileCode,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import { LogEntry } from "@/lib/types";
+
+/* ─── Types ────────────────────────────────────────────── */
 
 interface EventLogProps {
-  logs: LogEntry[];
+  logs:    LogEntry[];
   onClear?: () => void;
 }
 
-const AGENT_STAMPS: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  triage: { label: "Triage", bg: "bg-white", text: "text-navy-950 font-bold", border: "border-white" },
-  remediation: { label: "Remediation", bg: "bg-navy-800", text: "text-white font-bold", border: "border-navy-400" },
-  testImpact: { label: "Test-Impact", bg: "bg-navy-700", text: "text-white font-bold", border: "border-navy-300" },
-  deployRisk: { label: "Deploy-Risk", bg: "bg-navy-900", text: "text-white font-bold", border: "border-white" },
+/* ─── Static maps ──────────────────────────────────────── */
+
+const AGENT_LABELS: Record<string, string> = {
+  triage:      "Triage",
+  remediation: "Remediation",
+  testImpact:  "Test-Impact",
+  deployRisk:  "Deploy-Risk",
 };
 
+const TYPE_COLOR: Record<LogEntry["type"], string> = {
+  system:     "text-white/40",
+  decision:   "text-[#0083ff]",
+  correction: "text-[#eab308]",
+  rerun:      "text-[#0083ff]",
+  untouched:  "text-[#22c55e]",
+};
+
+const TYPE_PILL: Record<LogEntry["type"], string> = {
+  system:     "bg-[#0a0a0a] text-white/40 border border-[#222222]",
+  decision:   "bg-[#0083ff]/15 text-[#0083ff] border border-[#0083ff]/30",
+  correction: "bg-[#eab308]/15 text-[#eab308] border border-[#eab308]/30",
+  rerun:      "bg-[#0083ff]/15 text-[#0083ff] border border-[#0083ff]/30",
+  untouched:  "bg-[#22c55e]/15 text-[#22c55e] border border-[#22c55e]/30",
+};
+
+/* ─── Helpers ──────────────────────────────────────────── */
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString("en-GB", {
+    hour12:  false,
+    hour:    "2-digit",
+    minute:  "2-digit",
+    second:  "2-digit",
+  });
+}
+
+/* ─── Single log row ───────────────────────────────────── */
+
+function LogRow({
+  entry,
+  index,
+}: {
+  entry: LogEntry;
+  index: number;
+}) {
+  return (
+    <li
+      className="log-row grid grid-cols-[80px_1fr] gap-x-[16px] gap-y-[2px] border-b border-[#222222] px-[2px] py-[8px] text-[12px] leading-snug transition-colors hover:bg-[#0a0a0a] sm:grid-cols-[80px_auto_1fr]"
+      style={{ animationDelay: `${Math.min(index * 15, 150)}ms` }}
+    >
+      {/* Timestamp */}
+      <span
+        className="shrink-0 font-mono text-white/30"
+        suppressHydrationWarning
+      >
+        {formatTime(entry.timestamp)}
+      </span>
+
+      {/* Type pill */}
+      <span
+        className={clsx(
+          "hidden sm:inline-flex shrink-0 items-center px-[8px] py-[2px] font-semibold uppercase tracking-wider",
+          TYPE_PILL[entry.type]
+        )}
+        style={{ fontSize: 10 }}
+      >
+        {entry.type}
+      </span>
+
+      {/* Message */}
+      <span className={clsx("col-span-1 sm:col-span-1", TYPE_COLOR[entry.type])}>
+        {entry.agentId ? (
+          <strong className="font-semibold">
+            [{AGENT_LABELS[entry.agentId] ?? entry.agentId}]&nbsp;
+          </strong>
+        ) : null}
+        <span className="text-white/70 font-normal">{entry.message}</span>
+      </span>
+    </li>
+  );
+}
+
+/* ─── Component ────────────────────────────────────────── */
+
 export default function EventLog({ logs, onClear }: EventLogProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef   = useRef<HTMLDivElement>(null);
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setCount(logs.length);
   }, [logs]);
 
-  function getLogIcon(type: LogEntry["type"]) {
-    switch (type) {
-      case "correction":
-        return <AlertCircle className="w-3.5 h-3.5 text-white shrink-0" />;
-      case "rerun":
-        return <RefreshCw className="w-3.5 h-3.5 text-navy-200 animate-spin shrink-0" />;
-      case "decision":
-        return <CheckCircle className="w-3.5 h-3.5 text-white shrink-0" />;
-      case "untouched":
-        return <Shield className="w-3.5 h-3.5 text-navy-300 shrink-0" />;
-      default:
-        return <FileCode className="w-3.5 h-3.5 text-navy-200 shrink-0" />;
-    }
-  }
-
-  function formatTime(ts: number) {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  }
-
   return (
-    <div className="paper-card-navy flex flex-col rounded-2xl border border-white/10 overflow-hidden shadow-paper-lg">
-      {/* Log Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-navy-700/80 bg-navy-900/60">
-        <div className="flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-white" />
-          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
-            Swarm Event Log & Cascade Stream
-          </h3>
-          <span className="px-2 py-0.5 text-[10px] font-mono bg-white text-navy-950 font-bold rounded-full shadow-sm">
-            {logs.length} entries
-          </span>
+    <section
+      className="border border-[#222222] bg-[#141414] p-[24px]"
+      aria-label="Event log"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-[16px]">
+          <h2 className="text-[16px] font-semibold text-white">Event log</h2>
+          {count > 0 ? (
+            <span className="border border-[#0083ff]/30 bg-[#0083ff]/15 px-[12px] py-[2px] text-[12px] font-semibold text-[#0083ff]">
+              {count}
+            </span>
+          ) : null}
         </div>
-        {onClear && logs.length > 0 && (
+        {onClear && logs.length > 0 ? (
           <button
             type="button"
             onClick={onClear}
-            className="text-[11px] font-mono text-navy-300 hover:text-white transition-colors"
+            className="text-[13px] text-white/40 transition-colors hover:text-white"
+            aria-label="Clear event log"
           >
-            Clear log
+            Clear
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Log Entries */}
-      <div className="flex-1 p-3.5 overflow-y-auto space-y-2 font-mono text-xs">
+      {/* Entries */}
+      <div
+        className={clsx(
+          "mt-[16px] overflow-y-auto",
+          logs.length > 0 ? "max-h-[220px]" : ""
+        )}
+      >
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center py-6 text-[#a49db5] font-mono italic text-[11px]">
-            No activity recorded yet. Click "Spawn Swarm Pipeline" to trigger agent dispatch.
-          </div>
+          <p className="text-[13px] text-white/40">No events yet.</p>
         ) : (
-          logs.map((entry) => {
-            const stamp = entry.agentId ? AGENT_STAMPS[entry.agentId] : null;
-            const isCorrection = entry.type === "correction";
-            const isRerun = entry.type === "rerun";
-            const isUntouched = entry.type === "untouched";
-
-            return (
-              <div
-                key={entry.id}
-                className={clsx(
-                  "group flex items-start gap-2.5 p-2.5 rounded-lg border transition-all",
-                  isCorrection && "bg-white text-navy-950 border-white shadow-md font-medium",
-                  isRerun && "bg-navy-800/90 border-dashed border-navy-400 text-white",
-                  isUntouched && "bg-navy-950/70 border-navy-700 text-navy-300",
-                  !isCorrection && !isRerun && !isUntouched && "bg-navy-900/70 border-navy-800 text-white hover:border-navy-600"
-                )}
-              >
-                <span className={clsx("text-[10px] font-mono shrink-0 pt-0.5", isCorrection ? "text-navy-700" : "text-navy-400")}>
-                  {formatTime(entry.timestamp)}
-                </span>
-                <div className="pt-0.5">{getLogIcon(entry.type)}</div>
-                {stamp && (
-                  <span
-                    className={clsx(
-                      "px-1.5 py-0.2 rounded border text-[10px] uppercase font-mono tracking-wider shrink-0 shadow-sm",
-                      isCorrection ? "bg-navy-950 text-white border-navy-950" : `${stamp.bg} ${stamp.text} ${stamp.border}`
-                    )}
-                  >
-                    {stamp.label}
-                  </span>
-                )}
-                <span className="flex-1 break-words leading-relaxed">{entry.message}</span>
-              </div>
-            );
-          })
+          <ol className="flex flex-col">
+            {logs.map((entry, i) => (
+              <LogRow key={entry.id} entry={entry} index={i} />
+            ))}
+          </ol>
         )}
         <div ref={bottomRef} />
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,946 +1,589 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import {
-  AgentId,
-  AgentRun,
-  AgentStatus,
-  LogEntry,
-  Correction,
-  PipelineState,
-} from "@/lib/types";
-import {
-  DEPENDENCY_GRAPH,
-  transitiveDownstream,
-  MOCK_DECISIONS,
-  CORRECTED_TRIAGE,
-  CORRECTED_REMEDIATION,
-  makeIdleState,
-  log,
-} from "@/lib/mock";
-import PipelineView from "@/components/PipelineView";
-import EventLog from "@/components/EventLog";
-import CorrectionInput from "@/components/CorrectionInput";
-import ResponsiveHeroBanner from "@/components/ui/responsive-hero-banner";
-import {
-  Play,
-  RotateCcw,
-  ShieldCheck,
-  Zap,
-  Activity,
-  GitFork,
-  Sparkles,
-  Layers,
-  Radio,
-  ArrowRight,
-  Monitor,
-  Terminal as TermIcon,
-} from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import { Menu, X, ArrowRight, Play, Check } from "lucide-react";
 import clsx from "clsx";
+import MurmurMark from "@/components/MurmurMark";
+import Hero from "@/components/ui/animated-shader-hero";
 
-const LANDING_NAV_LINKS = [
-  { label: "Home", href: "#home", active: true },
+/* ═══════════════════════════════════════════════════
+   DATA
+   ═══════════════════════════════════════════════════ */
+
+const NAV_LINKS = [
+  { label: "Home", href: "#home" },
   { label: "How it works", href: "#how-it-works" },
-  { label: "Console", href: "#console" },
+  { label: "Console", href: "/console" },
   { label: "Docs", href: "#docs" },
 ];
 
-const LANDING_PARTNERS = [
+const PIPELINE = [
+  { id: "triage", label: "Triage", status: "Done", done: true, cascade: false },
+  { id: "remediation", label: "Remediation", status: "Re-running", done: false, cascade: true },
+  { id: "testImpact", label: "Test-Impact", status: "Stale", done: false, cascade: true },
+  { id: "deployRisk", label: "Deploy-Risk", status: "Stale", done: false, cascade: true },
+];
+
+const STEPS = [
+  {
+    n: "01",
+    heading: "Swarm runs the job",
+    desc: "Four agents execute sequentially on a real CVE so every decision has a visible upstream source.",
+  },
+  {
+    n: "02",
+    heading: "Human corrects one agent",
+    desc: "A security engineer overrides a mid-flight decision instead of restarting the whole pipeline.",
+  },
+  {
+    n: "03",
+    heading: "BFS traces dependents",
+    desc: "Murmur uses a deterministic graph walk to find exactly which downstream agents relied on the changed decision.",
+  },
+  {
+    n: "04",
+    heading: "Only affected agents re-run",
+    desc: "Upstream work stays intact while only the impacted branch replays with fresh context.",
+  },
+];
+
+const PARTNERS = [
   { name: "Groq", detail: "Llama 3.3 70B" },
   { name: "MongoDB Atlas", detail: "Hybrid DB Layer" },
   { name: "Next.js", detail: "App Router" },
 ];
 
-const LANDING_HOW_IT_WORKS = [
-  {
-    step: "01",
-    title: "Swarm runs the job",
-    body: "Four agents execute sequentially on a real CVE so every decision has a visible upstream source.",
-  },
-  {
-    step: "02",
-    title: "Human corrects one agent",
-    body: "A security engineer overrides a mid-flight decision instead of restarting the whole pipeline.",
-  },
-  {
-    step: "03",
-    title: "BFS traces dependents",
-    body: "Murmur uses a deterministic graph walk to find exactly which downstream agents relied on the changed decision.",
-  },
-  {
-    step: "04",
-    title: "Only affected agents re-run",
-    body: "Upstream work stays intact while only the impacted branch replays with fresh context.",
-  },
-];
-
-const HERO_ARC_SVG = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
-    <defs>
-      <linearGradient id="murmurGlow" x1="120" y1="120" x2="1120" y2="540" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#9a8afb" stop-opacity="0" />
-        <stop offset="0.35" stop-color="#9a8afb" stop-opacity="0.18" />
-        <stop offset="0.7" stop-color="#9a8afb" stop-opacity="0.48" />
-        <stop offset="1" stop-color="#9a8afb" stop-opacity="0" />
-      </linearGradient>
-    </defs>
-    <path d="M180 510C360 250 590 162 860 190C1020 207 1120 268 1192 344" stroke="url(#murmurGlow)" stroke-width="10" stroke-linecap="round" />
-    <path d="M188 500C364 258 594 174 858 202C1012 218 1108 278 1182 352" stroke="#9a8afb" stroke-opacity="0.16" stroke-width="42" stroke-linecap="round" filter="blur(16px)" />
-    <circle cx="854" cy="200" r="10" fill="#9a8afb" fill-opacity="0.5" />
-    <circle cx="1116" cy="308" r="12" fill="#9a8afb" fill-opacity="0.34" />
-  </svg>
-`).replace(/\n\s+/g, "")}`;
-
-function LandingHowItWorks() {
+/* ═══════════════════════════════════════════════════
+   STATUS BADGE
+   ═══════════════════════════════════════════════════ */
+function StatusBadge({ status, done, cascade }: { status: string; done: boolean; cascade: boolean }) {
+  const base = "inline-flex items-center gap-1 px-[10px] py-[2px] text-[12px] font-semibold leading-tight border";
+  const cls = done
+    ? "bg-[#0083ff]/15 text-[#0083ff] border-[#0083ff]/30"
+    : cascade
+    ? "bg-[#eab308]/15 text-[#eab308] border-[#eab308]/30"
+    : "bg-[#141414] text-[#767676] border-[#222222]";
   return (
-    <section id="how-it-works" className="mx-auto w-full max-w-7xl px-[30px] pb-[54px] pt-[54px] sm:px-[48px] lg:px-[72px]">
-      <div className="grid gap-[30px] lg:grid-cols-4">
-        {LANDING_HOW_IT_WORKS.map((item) => (
-          <article
-            key={item.step}
-            className="rounded-[20px] border border-white/10 bg-[#1e1c26] p-[30px]"
-          >
-            <div className="text-[30px] font-bold leading-none text-[#ffffff]">{item.step}</div>
-            <h3 className="mt-[30px] text-[18px] font-bold text-[#ffffff]">{item.title}</h3>
-            <p className="mt-[12px] text-[14px] leading-[1.7] text-[#eaeaf0]">{item.body}</p>
-          </article>
+    <span className={clsx(base, cls, cascade && !done && "animate-pulse")}>
+      {status}
+    </span>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   PIPELINE CARD (hero visual section)
+   ═══════════════════════════════════════════════════ */
+function PipelineCard({ card, isLast }: { card: typeof PIPELINE[number]; isLast: boolean }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center">
+      <article className="flex min-h-[160px] min-w-0 flex-1 flex-col bg-[#141414] border border-[#222222] p-[24px]">
+        <h3 className="text-[14px] font-semibold text-white">{card.label}</h3>
+        <StatusBadge status={card.status} done={card.done} cascade={card.cascade} />
+        <p className="mt-auto pt-[12px] text-[12px] leading-snug text-white/60">
+          {card.done
+            ? "CRITICAL — apply vendor patch v2.1, maintains ABI compat."
+            : card.cascade
+            ? "Stale — waiting for upstream correction to propagate."
+            : "Waiting to run."}
+        </p>
+      </article>
+
+      {!isLast && (
+        <div className="relative mx-[8px] flex h-[2px] w-[32px] shrink-0 items-center" aria-hidden="true">
+          <div className={clsx("h-[2px] w-full", card.done ? "bg-[#0083ff]" : "bg-[#222222]")} />
+          <span
+            className={clsx(
+              "absolute right-[-1px] top-1/2 -translate-y-1/2 h-[8px] w-[8px] rotate-45",
+              "border-t-[2px] border-r-[2px]",
+              card.done ? "border-[#0083ff]" : "border-[#222222]"
+            )}
+          />
+          {card.done && (
+            <span className="absolute left-0 top-1/2 h-[7px] w-[7px] -translate-y-1/2 rounded-full bg-[#0083ff] shadow-[0_0_6px_2px_#0083ff80]" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   FEATURE SECTION — alternating panels
+   ═══════════════════════════════════════════════════ */
+function FeatureSection({
+  reverse,
+  points,
+  heading,
+  paragraph,
+  visual,
+}: {
+  reverse: boolean;
+  points: string[];
+  heading: string;
+  paragraph: string;
+  visual: React.ReactNode;
+}) {
+  return (
+    <div
+      className={clsx(
+        "flex flex-col items-center gap-[54px] lg:gap-[72px]",
+        reverse ? "lg:flex-row-reverse" : "lg:flex-row"
+      )}
+    >
+      <div className="flex flex-1 flex-col" style={{ maxWidth: 480 }}>
+        <ul className="flex flex-col gap-[10px]">
+          {points.map((pt) => (
+            <li key={pt} className="flex items-center gap-[10px]">
+              <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[#0083ff]/20">
+                <Check className="h-[10px] w-[10px] text-[#0083ff]" strokeWidth={3} />
+              </span>
+              <span className="text-[14px] text-white/60">{pt}</span>
+            </li>
+          ))}
+        </ul>
+        <h3 className="mt-[30px] text-[32px] font-bold leading-tight text-white lg:text-[38px]">
+          {heading}
+        </h3>
+        <p className="mt-[20px] text-[15px] leading-relaxed text-white/70">{paragraph}</p>
+        <Link
+          href="/console"
+          className="mt-[30px] inline-flex items-center gap-[8px] text-[14px] font-semibold text-[#0083ff] transition-opacity hover:opacity-70"
+        >
+          Explore
+          <ArrowRight className="h-[14px] w-[14px]" />
+        </Link>
+      </div>
+      <div className="w-full flex-1 lg:max-w-[520px]">
+        <div className="w-full border border-[#222222] bg-[#141414]" style={{ minHeight: 280 }}>
+          {visual}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Visual: Dependency Graph ──────────────────────── */
+function VisualGraph() {
+  const nodes = [
+    { id: "triage", label: "Triage", x: 50, y: 60 },
+    { id: "remediation", label: "Remediation", x: 200, y: 60 },
+    { id: "testImpact", label: "Test-Impact", x: 350, y: 60 },
+    { id: "deployRisk", label: "Deploy-Risk", x: 200, y: 160 },
+  ];
+  const edges = [
+    { x1: 50, y1: 60, x2: 200, y2: 60 },
+    { x1: 200, y1: 60, x2: 350, y2: 60 },
+    { x1: 200, y1: 60, x2: 200, y2: 160 },
+  ];
+  return (
+    <div className="flex h-full w-full items-center justify-center p-[40px]">
+      <svg viewBox="0 0 420 220" className="w-full" style={{ maxHeight: 200 }}>
+        {edges.map((e, i) => (
+          <line
+            key={i}
+            x1={e.x1}
+            y1={e.y1}
+            x2={e.x2}
+            y2={e.y2}
+            stroke="#0083ff"
+            strokeWidth="1.5"
+            strokeOpacity={0.4}
+            strokeDasharray="4 3"
+          />
+        ))}
+        {nodes.map((n) => (
+          <g key={n.id}>
+            <rect
+              x={n.x - 52}
+              y={n.y - 16}
+              width={104}
+              height={32}
+              fill="rgba(0,131,255,0.08)"
+              stroke="rgba(0,131,255,0.35)"
+              strokeWidth={1}
+            />
+            <text
+              x={n.x}
+              y={n.y + 5}
+              textAnchor="middle"
+              fill="#eaeaf0"
+              fontSize={11}
+              fontWeight={600}
+              fontFamily="Inter, sans-serif"
+            >
+              {n.label}
+            </text>
+          </g>
+        ))}
+        <text x={210} y={215} textAnchor="middle" fill="#767676" fontSize={10} fontFamily="Inter, sans-serif">
+          BFS traversal — deterministic, no model call
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/* ─── Visual: Cascade before/after ───────────────────── */
+function VisualCascade() {
+  const unchanged = [{ label: "Triage", color: "#22c55e", status: "Done" }];
+  const cascading = [
+    { label: "Remediation", color: "#eab308", status: "Re-running" },
+    { label: "Test-Impact", color: "#eab308", status: "Stale" },
+    { label: "Deploy-Risk", color: "#eab308", status: "Stale" },
+  ];
+  const rowCls = "flex items-center justify-between border border-[#222222] px-[16px] py-[10px] bg-[#0a0a0a]";
+  return (
+    <div className="flex flex-col gap-[20px] p-[32px]">
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30">
+        After correction to Triage
+      </p>
+      <div className="grid grid-cols-2 gap-[16px]">
+        <div className="flex flex-col gap-[8px]">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#22c55e]">Preserved</p>
+          {unchanged.map((r) => (
+            <div key={r.label} className={clsx(rowCls, "border-[#22c55e]/30")}>
+              <span className="text-[13px] text-white">{r.label}</span>
+              <span className="text-[11px] font-semibold text-[#22c55e]">{r.status}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[#eab308]">Re-running</p>
+          {cascading.map((r) => (
+            <div key={r.label} className={clsx(rowCls, "border-[#eab308]/30 animate-pulse")}>
+              <span className="text-[13px] text-white">{r.label}</span>
+              <span className="text-[11px] font-semibold text-[#eab308]">{r.status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="text-[11px] text-white/40">Triage's verified output is kept — no wasted compute</p>
+    </div>
+  );
+}
+
+/* ─── Visual: Correction Input ────────────────────────── */
+function VisualCorrection() {
+  return (
+    <div className="flex flex-col gap-[16px] p-[32px]">
+      <div className="border border-[#0083ff]/25 bg-[#0083ff]/5 p-[20px]">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[#0083ff]">Human intervention</p>
+        <div className="mt-[12px] flex flex-col gap-[10px]">
+          <div className="bg-[#0a0a0a] border border-[#222222] px-[14px] py-[10px]">
+            <p className="text-[10px] text-white/40">Target agent</p>
+            <p className="text-[13px] font-semibold text-white">Triage</p>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#0083ff]/20 px-[14px] py-[10px]">
+            <p className="text-[12px] text-white/70">Use vendor patch v2.1 — maintains ABI compat…</p>
+          </div>
+          <div className="flex justify-end">
+            <div className="bg-[#0083ff] px-[16px] py-[6px] text-[12px] font-semibold text-white">
+              Submit correction →
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col gap-[6px]">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-white/40">Audit trail</p>
+        {[
+          { agent: "Triage", time: "14:22:01", text: "Use vendor patch v2.1" },
+          { agent: "Remediation", time: "14:25:48", text: "Applied via distro pkg" },
+        ].map((e) => (
+          <div key={e.agent} className="flex items-center gap-[10px] bg-[#0a0a0a] border border-[#222222] px-[12px] py-[8px]">
+            <span className="shrink-0 bg-[#0083ff]/20 px-[6px] py-[2px] text-[9px] font-bold text-[#0083ff]">
+              {e.agent}
+            </span>
+            <span className="flex-1 text-[11px] text-white/70">{e.text}</span>
+            <span className="shrink-0 text-[10px] text-white/30">{e.time}</span>
+          </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-function LandingPipelinePreview({ step }: { step: number }) {
-  const triageCascade = step < 4;
-
-  const snapshot = triageCascade
-    ? {
-        label: "Correcting Triage",
-        summary: "A triage correction travels to Remediation, Test-Impact, and Deploy-Risk only.",
-        litArrows: new Set(["triage->remediation", "remediation->testImpact", "remediation->deployRisk"]),
-        cards: {
-          triage: {
-            status: step === 0 ? ("rerunning" as const) : ("done" as const),
-            title: "Triage",
-            summary: CORRECTED_TRIAGE.summary,
-            decision: CORRECTED_TRIAGE.decision,
-          },
-          remediation: {
-            status: step === 1 ? ("rerunning" as const) : step < 1 ? ("stale" as const) : ("done" as const),
-            title: "Remediation",
-            summary:
-              step < 1
-                ? "Marked stale while Triage replays with corrected guidance."
-                : MOCK_DECISIONS.remediation.summary,
-            decision:
-              step < 1
-                ? "Waiting on corrected Triage context."
-                : step === 1
-                  ? "Re-evaluating with corrected Triage context."
-                  : MOCK_DECISIONS.remediation.decision,
-          },
-          testImpact: {
-            status: step === 2 ? ("rerunning" as const) : step < 2 ? ("stale" as const) : ("done" as const),
-            title: "Test-Impact",
-            summary:
-              step < 2
-                ? "Marked stale while Remediation replays."
-                : step === 2
-                  ? "Re-running with corrected Remediation context."
-                  : MOCK_DECISIONS.testImpact.summary,
-            decision:
-              step < 2
-                ? "Waiting on corrected Remediation context."
-                : step === 2
-                  ? "Re-running targeted tests from the corrected patch path."
-                  : MOCK_DECISIONS.testImpact.decision,
-          },
-          deployRisk: {
-            status: step === 3 ? ("rerunning" as const) : step < 3 ? ("stale" as const) : ("done" as const),
-            title: "Deploy-Risk",
-            summary:
-              step < 3
-                ? "Marked stale until Test-Impact finishes."
-                : step === 3
-                  ? "Re-running after the corrected downstream context settles."
-                  : MOCK_DECISIONS.deployRisk.summary,
-            decision:
-              step < 3
-                ? "Waiting on corrected downstream context."
-                : step === 3
-                  ? "Re-evaluating rollout risk after corrected downstream work."
-                  : MOCK_DECISIONS.deployRisk.decision,
-          },
-        },
-      }
-    : {
-        label: "Correcting Remediation",
-        summary: "A Remediation correction leaves Triage untouched and replays only Test-Impact + Deploy-Risk.",
-        litArrows: new Set(["remediation->testImpact", "remediation->deployRisk"]),
-        cards: {
-          triage: {
-            status: "done" as const,
-            title: "Triage",
-            summary: CORRECTED_TRIAGE.summary,
-            decision: CORRECTED_TRIAGE.decision,
-          },
-          remediation: {
-            status: step === 4 ? ("rerunning" as const) : ("done" as const),
-            title: "Remediation",
-            summary: CORRECTED_REMEDIATION.summary,
-            decision:
-              step === 4
-                ? "Re-evaluating with the corrected vendor patch path."
-                : CORRECTED_REMEDIATION.decision,
-          },
-          testImpact: {
-            status: step === 5 ? ("rerunning" as const) : step < 5 ? ("stale" as const) : ("done" as const),
-            title: "Test-Impact",
-            summary:
-              step < 5
-                ? "Marked stale while Remediation replays."
-                : step === 5
-                  ? "Re-running with corrected Remediation context."
-                  : MOCK_DECISIONS.testImpact.summary,
-            decision:
-              step < 5
-                ? "Waiting on corrected Remediation context."
-                : step === 5
-                  ? "Re-running targeted tests from the corrected patch path."
-                  : MOCK_DECISIONS.testImpact.decision,
-          },
-          deployRisk: {
-            status: step === 6 ? ("rerunning" as const) : step < 6 ? ("stale" as const) : ("done" as const),
-            title: "Deploy-Risk",
-            summary:
-              step < 6
-                ? "Marked stale until Test-Impact finishes."
-                : step === 6
-                  ? "Re-running after the corrected downstream context settles."
-                  : MOCK_DECISIONS.deployRisk.summary,
-            decision:
-              step < 6
-                ? "Waiting on corrected downstream context."
-                : step === 6
-                  ? "Re-evaluating rollout risk after corrected downstream work."
-                  : MOCK_DECISIONS.deployRisk.decision,
-          },
-        },
-      };
-
-  const statusStyles: Record<
-    "idle" | "running" | "done" | "stale" | "rerunning",
-    { label: string; badge: string; dot: string; pulse: string }
-  > = {
-    idle: {
-      label: "Idle",
-      badge: "border-white/10 bg-black text-[#a49db5]",
-      dot: "bg-[#767676]",
-      pulse: "",
-    },
-    running: {
-      label: "Running",
-      badge: "border-[#9a8afb]/40 bg-[#9a8afb]/12 text-[#ffffff]",
-      dot: "bg-[#9a8afb]",
-      pulse: "animate-pulse",
-    },
-    done: {
-      label: "Done",
-      badge: "border-white/10 bg-[#1e1c26] text-[#ffffff]",
-      dot: "bg-[#46c17d]",
-      pulse: "",
-    },
-    stale: {
-      label: "Stale",
-      badge: "border-[#d6a94f]/45 bg-[#d6a94f]/10 text-[#ffffff]",
-      dot: "bg-[#d6a94f]",
-      pulse: "animate-pulse",
-    },
-    rerunning: {
-      label: "Re-running",
-      badge: "border-[#d6a94f]/45 bg-[#d6a94f]/14 text-[#ffffff]",
-      dot: "bg-[#d6a94f]",
-      pulse: "animate-pulse",
-    },
-  };
-
-  const cardOrder: Array<keyof typeof snapshot.cards> = ["triage", "remediation", "testImpact", "deployRisk"];
+/* ═══════════════════════════════════════════════════
+   PAGE COMPONENT
+   ═══════════════════════════════════════════════════ */
+export default function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-[30px] pb-[54px] sm:px-[48px] lg:px-[72px]">
-      <div className="rounded-[24px] border border-white/10 bg-[#1e1c26] p-[30px] sm:p-[44px]">
-        <div className="flex flex-col gap-[12px] lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-[#a49db5]">
-              Live pipeline preview
-            </p>
-            <h3 className="mt-[12px] text-[24px] font-bold text-[#ffffff]">{snapshot.label}</h3>
-          </div>
-          <p className="max-w-2xl text-[14px] leading-[1.7] text-[#eaeaf0]">{snapshot.summary}</p>
-        </div>
+    <div id="home" className="min-h-screen bg-[#000000] text-white">
 
-        <div className="mt-[30px] grid gap-[12px] xl:grid-cols-[repeat(4,minmax(0,1fr))]">
-          {cardOrder.map((agentId, index) => {
-            const card = snapshot.cards[agentId];
-            const isActive = card.status === "rerunning";
-            const isStale = card.status === "stale";
-            const status = statusStyles[card.status];
+      {/* ─── NAV ───────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-50 bg-[#000000] border-b border-[#222222]"
+        style={{ height: 72 }}
+      >
+        <div className="mx-auto flex w-full items-center justify-between px-[30px] lg:px-[72px]" style={{ maxWidth: 1280, height: 72 }}>
+          <a href="#home" aria-label="Murmur home" className="shrink-0 flex items-center">
+            <MurmurMark size={32} />
+          </a>
 
-            return (
-              <div key={agentId} className="flex flex-col min-h-[344px]">
-                <article
-                  className={clsx(
-                    "flex h-full min-h-[344px] flex-col rounded-[20px] border bg-black p-[30px] transition-all duration-300",
-                    isActive ? "border-[#9a8afb] shadow-[0_0_0_1px_rgba(154,138,251,0.24)]" : "border-white/10",
-                    isStale && "border-[#d6a94f]/55"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-[12px]">
-                    <div>
-                      <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#a49db5]">{card.title}</p>
-                      <p className="mt-[12px] text-[18px] font-bold text-[#ffffff] break-words">{card.summary}</p>
-                    </div>
-                    <span className={clsx("rounded-[999px] border px-[12px] py-[3px] text-[11px] font-medium", status.badge)}>
-                      {status.label}
-                    </span>
-                  </div>
-
-                  <div className="mt-[30px] flex items-center gap-[9px]">
-                    <span className={clsx("h-[9px] w-[9px] rounded-full", status.dot, status.pulse)} />
-                    <span className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#eaeaf0]">
-                      {isActive ? "Pulse traveling" : isStale ? "Waiting on upstream" : "Decision locked"}
-                    </span>
-                  </div>
-
-                  <div className="mt-[30px] flex-1 rounded-[16px] border border-white/10 bg-[#1e1c26] p-[30px] overflow-auto">
-                    <p className="text-[12px] font-medium uppercase tracking-[0.24em] text-[#a49db5]">Decision</p>
-                    <p className="mt-[12px] text-[14px] leading-[1.7] text-[#eaeaf0] break-words">{card.decision}</p>
-                  </div>
-                </article>
-
-                {index < cardOrder.length - 1 ? (
-                  <div className="flex items-center justify-center py-[12px] lg:py-0 lg:px-[12px]">
-                    <div
-                      className={clsx(
-                        "flex items-center gap-[9px] rounded-[999px] border px-[12px] py-[3px] text-[11px] font-medium transition-colors duration-300",
-                        snapshot.litArrows.has(`${agentId}->${cardOrder[index + 1]}`)
-                          ? "border-[#9a8afb]/70 bg-[#9a8afb]/12 text-[#ffffff]"
-                          : "border-white/10 bg-black text-[#a49db5]"
-                      )}
-                    >
-                      <ArrowRight className="h-[14px] w-[14px]" />
-                      <span className="hidden lg:inline">
-                        {snapshot.litArrows.has(`${agentId}->${cardOrder[index + 1]}`) ? "Cascade" : "Dependency"}
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export default function MurmurPage() {
-  const [showLanding, setShowLanding] = useState(true);
-  const [pipeline, setPipeline] = useState<PipelineState>(makeIdleState);
-  const [flashingAgents, setFlashingAgents] = useState<Set<AgentId>>(new Set());
-  const [activeArrows, setActiveArrows] = useState<Set<string>>(new Set());
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [landingStep, setLandingStep] = useState(0);
-
-  const timersRef = useRef<NodeJS.Timeout[]>([]);
-
-  const clearTimers = () => {
-    timersRef.current.forEach((t) => clearTimeout(t));
-    timersRef.current = [];
-  };
-
-  useEffect(() => {
-    return () => clearTimers();
-  }, []);
-
-  useEffect(() => {
-    if (!showLanding) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      setLandingStep((current) => (current + 1) % 7);
-    }, 500);
-
-    return () => window.clearInterval(interval);
-  }, [showLanding]);
-
-  const addLog = (msg: string, type: LogEntry["type"], agentId?: AgentId) => {
-    setPipeline((prev) => ({
-      ...prev,
-      log: [...prev.log, log(msg, type, agentId)],
-    }));
-  };
-
-  // ─── Pipeline Spawn Simulation ───────────────────────────────────────────────
-  const handleStartPipeline = () => {
-    clearTimers();
-    setIsProcessing(true);
-    const fresh = makeIdleState();
-    fresh.phase = "running";
-    setPipeline(fresh);
-
-    addLog("🚀 Pipeline spawned for CVE-2024-3094 (XZ Utils backdoor CVSS 10.0)", "system");
-
-    // 1. Triage
-    const t1 = setTimeout(() => {
-      setPipeline((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          triage: { ...prev.agents.triage, status: "running", summary: "Analyzing CVE vector & threat landscape..." },
-        },
-      }));
-      addLog("Triage agent running: Evaluating CVE-2024-3094 vector", "system", "triage");
-    }, 400);
-
-    const t2 = setTimeout(() => {
-      setPipeline((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          triage: {
-            ...prev.agents.triage,
-            status: "done",
-            ...MOCK_DECISIONS.triage,
-            lastUpdated: Date.now(),
-          },
-          remediation: {
-            ...prev.agents.remediation,
-            status: "running",
-            summary: "Formulating dependency pinning & patch strategy...",
-          },
-        },
-      }));
-      addLog(`Triage completed: ${MOCK_DECISIONS.triage.summary}`, "decision", "triage");
-      addLog("Remediation agent running (Triggered by Triage completion)", "system", "remediation");
-    }, 1800);
-
-    // 2. Remediation
-    const t3 = setTimeout(() => {
-      setPipeline((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          remediation: {
-            ...prev.agents.remediation,
-            status: "done",
-            ...MOCK_DECISIONS.remediation,
-            lastUpdated: Date.now(),
-          },
-          testImpact: {
-            ...prev.agents.testImpact,
-            status: "running",
-            summary: "Evaluating test suites for xz-utils / sshd linkage...",
-          },
-        },
-      }));
-      addLog(`Remediation completed: ${MOCK_DECISIONS.remediation.summary}`, "decision", "remediation");
-      addLog("Test-Impact agent running (Triggered by Remediation completion)", "system", "testImpact");
-    }, 3200);
-
-    // 3. Test-Impact & Deploy-Risk
-    const t4 = setTimeout(() => {
-      setPipeline((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          testImpact: {
-            ...prev.agents.testImpact,
-            status: "done",
-            ...MOCK_DECISIONS.testImpact,
-            lastUpdated: Date.now(),
-          },
-          deployRisk: {
-            ...prev.agents.deployRisk,
-            status: "running",
-            summary: "Calculating blast radius, rollback plans, and canary stages...",
-          },
-        },
-      }));
-      addLog(`Test-Impact completed: ${MOCK_DECISIONS.testImpact.summary}`, "decision", "testImpact");
-      addLog("Deploy-Risk agent running (Triggered by Remediation + Test-Impact)", "system", "deployRisk");
-    }, 4600);
-
-    const t5 = setTimeout(() => {
-      setPipeline((prev) => ({
-        ...prev,
-        phase: "complete",
-        agents: {
-          ...prev.agents,
-          deployRisk: {
-            ...prev.agents.deployRisk,
-            status: "done",
-            ...MOCK_DECISIONS.deployRisk,
-            lastUpdated: Date.now(),
-          },
-        },
-      }));
-      addLog(`Deploy-Risk completed: ${MOCK_DECISIONS.deployRisk.summary}`, "decision", "deployRisk");
-      addLog("✅ Full swarm initial run complete. Ready for human live corrections.", "system");
-      setIsProcessing(false);
-    }, 6000);
-
-    timersRef.current.push(t1, t2, t3, t4, t5);
-  };
-
-  // ─── Live Correction Propagation (BFS Cascade) ──────────────────────────────
-  const handlePropagateCorrection = (
-    targetAgent: AgentId,
-    overrideText: string,
-    overrideData?: { decision: string; reasoning: string; summary: string }
-  ) => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-
-    const affected = transitiveDownstream(targetAgent);
-    const untouched = (["triage", "remediation", "testImpact", "deployRisk"] as AgentId[]).filter(
-      (id) => id !== targetAgent && !affected.includes(id)
-    );
-
-    setFlashingAgents(new Set([targetAgent]));
-    const newArrows = new Set<string>();
-    affected.forEach((dep) => {
-      if (DEPENDENCY_GRAPH[dep].includes(targetAgent)) {
-        newArrows.add(`${targetAgent}->${dep}`);
-      }
-    });
-    setActiveArrows(newArrows);
-
-    const oldDecision = pipeline.agents[targetAgent].decision;
-
-    // 1. Mark target as rerunning and downstream as stale
-    setPipeline((prev) => {
-      const nextAgents = { ...prev.agents };
-      nextAgents[targetAgent] = {
-        ...nextAgents[targetAgent],
-        status: "rerunning",
-        summary: `Human intervention received: "${overrideText}"`,
-      };
-
-      affected.forEach((depId) => {
-        nextAgents[depId] = {
-          ...nextAgents[depId],
-          status: "stale",
-          summary: `Marked stale (dependency ${targetAgent} changed)`,
-        };
-      });
-
-      return { ...prev, agents: nextAgents };
-    });
-
-    addLog(`👤 Human override injected into [${targetAgent}]: "${overrideText}"`, "correction", targetAgent);
-    addLog(`⚡ BFS cascade computed. Transitive dependents marked stale: [${affected.join(", ")}]`, "system");
-    if (untouched.length > 0) {
-      addLog(`🛡️ Untouched agents preserved with valid state: [${untouched.join(", ")}]`, "untouched");
-    }
-
-    // 2. Resolve corrected agent
-    const t1 = setTimeout(() => {
-      const resolvedData =
-        overrideData || {
-          decision: `[Corrected] ${overrideText}`,
-          reasoning: `Human correction applied: ${overrideText}. Downstream context recalculated.`,
-          summary: overrideText.length > 60 ? `${overrideText.slice(0, 57)}...` : overrideText,
-        };
-
-      setPipeline((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          [targetAgent]: {
-            ...prev.agents[targetAgent],
-            status: "done",
-            ...resolvedData,
-            lastUpdated: Date.now(),
-          },
-        },
-      }));
-      addLog(`[${targetAgent}] updated with corrected reasoning.`, "decision", targetAgent);
-    }, 1200);
-
-    // 3. Sequentially re-invoke affected downstream agents
-    let delayAccumulator = 2000;
-    affected.forEach((depId, idx) => {
-      const tRerunStart = setTimeout(() => {
-        setPipeline((prev) => ({
-          ...prev,
-          agents: {
-            ...prev.agents,
-            [depId]: {
-              ...prev.agents[depId],
-              status: "rerunning",
-              summary: `Re-evaluating with upstream corrected context...`,
-            },
-          },
-        }));
-        addLog(`Re-running [${depId}] with new upstream context...`, "rerun", depId);
-      }, delayAccumulator);
-
-      const tRerunDone = setTimeout(() => {
-        setPipeline((prev) => {
-          let updatedSummary = prev.agents[depId].summary;
-          let updatedDecision = prev.agents[depId].decision;
-          let updatedReasoning = prev.agents[depId].reasoning;
-
-          if (depId === "remediation" && targetAgent === "triage") {
-            updatedDecision = CORRECTED_REMEDIATION.decision;
-            updatedReasoning = CORRECTED_REMEDIATION.reasoning;
-            updatedSummary = CORRECTED_REMEDIATION.summary;
-          } else if (depId === "testImpact") {
-            updatedSummary = "Updated tests: Added ABI compatibility regression suite, skipped full pin tests.";
-            updatedDecision = "Run ABI compatibility regression suite + distro package verification.";
-            updatedReasoning = "Reflecting the corrected upstream patch strategy. ABI compatibility test added.";
-          } else if (depId === "deployRisk") {
-            updatedSummary = "Deploy risk recalculated: LOW. Direct package update requires no rolling rollback pin.";
-            updatedDecision = "Risk: LOW. Standard staged rollout with canary health checks.";
-            updatedReasoning = "Upstream remediation now uses certified vendor patch. Risk profile reduced.";
-          }
-
-          return {
-            ...prev,
-            agents: {
-              ...prev.agents,
-              [depId]: {
-                ...prev.agents[depId],
-                status: "done",
-                decision: updatedDecision,
-                reasoning: updatedReasoning,
-                summary: updatedSummary,
-                lastUpdated: Date.now(),
-              },
-            },
-          };
-        });
-        addLog(`[${depId}] re-run complete with updated plan.`, "decision", depId);
-
-        if (idx === affected.length - 1) {
-          setFlashingAgents(new Set());
-          setActiveArrows(new Set());
-          setIsProcessing(false);
-          addLog("✨ Correction propagation complete. Swarm consistency restored without full restart.", "system");
-        }
-      }, delayAccumulator + 1400);
-
-      timersRef.current.push(tRerunStart, tRerunDone);
-      delayAccumulator += 1600;
-    });
-
-    const record: Correction = {
-      runId: pipeline.runId,
-      agentId: targetAgent,
-      oldDecision,
-      correctionText: overrideText,
-      timestamp: Date.now(),
-      downstreamAffected: affected,
-    };
-
-    setPipeline((prev) => ({
-      ...prev,
-      corrections: [record, ...prev.corrections],
-    }));
-
-    timersRef.current.push(t1);
-  };
-
-  const handlePreset = (beat: 1 | 2) => {
-    if (beat === 1) {
-      handlePropagateCorrection(
-        "triage",
-        "Use certified vendor patch v2.1 (RHEL/Debian) instead of version pinning",
-        CORRECTED_TRIAGE
-      );
-    } else {
-      handlePropagateCorrection(
-        "remediation",
-        "Apply vendor patch v2.1 via distro package manager directly without automated PR",
-        CORRECTED_REMEDIATION
-      );
-    }
-  };
-
-  const handleReset = () => {
-    clearTimers();
-    setIsProcessing(false);
-    setFlashingAgents(new Set());
-    setActiveArrows(new Set());
-    setPipeline(makeIdleState());
-  };
-
-  // ─── Render Landing Page ─────────────────────────────────────────────────────
-  if (showLanding) {
-    return (
-      <main className="min-h-screen bg-black text-[#eaeaf0] selection:bg-[#9a8afb] selection:text-black">
-        <section id="home">
-          <ResponsiveHeroBanner
-            logoUrl="/assets/murmur orange.png"
-            backgroundImageUrl={HERO_ARC_SVG}
-            navLinks={LANDING_NAV_LINKS}
-            ctaButtonText="Open Console"
-            badgeLabel="Live"
-            badgeText="Dependency-aware correction cascading"
-            title="Corrections propagate."
-            titleLine2="Not restarts."
-            description="When a human overrides one agent mid-flight, Murmur traces the decision dependency graph and re-runs only the agents that depend on it — leaving everything else intact."
-            primaryButtonText="Open Swarm Console"
-            secondaryButtonText="Watch Demo"
-            partnersTitle="Powered by"
-            partners={LANDING_PARTNERS}
-            onCtaClick={() => setShowLanding(false)}
-            onPrimaryClick={() => setShowLanding(false)}
-            onSecondaryClick={() => {
-              document.getElementById("pipeline-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-          />
-        </section>
-
-        <LandingHowItWorks />
-
-        <section id="pipeline-preview">
-          <LandingPipelinePreview step={landingStep} />
-        </section>
-
-        <section className="mx-auto w-full max-w-7xl px-[30px] pb-[88px] sm:px-[48px] lg:px-[72px]">
-          <div className="rounded-[24px] border border-white/10 bg-[#1e1c26] p-[30px]">
-            <div className="flex flex-wrap items-center justify-between gap-[12px]">
-              <div>
-                <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-[#a49db5]">Console</p>
-                <h3 className="mt-[12px] text-[24px] font-bold text-[#ffffff]">Open the live swarm console</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLanding(false)}
-                className="rounded-[16px] bg-[#9a8afb] px-[30px] py-[12px] text-[14px] font-semibold text-black transition-transform duration-300 hover:scale-[1.02] active:scale-[0.98]"
+          <nav className="hidden items-center gap-[44px] md:flex" aria-label="Primary navigation">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className={clsx(
+                  "text-[15px] font-medium text-white/60 transition-colors hover:text-white",
+                  link.label === "Home" && "border border-white/20 px-[16px] py-[6px]"
+                )}
               >
-                Open Swarm Console
-              </button>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
+                {link.label}
+              </a>
+            ))}
+          </nav>
 
-  // ─── Render Main Console Dashboard ──────────────────────────────────────────
-  return (
-    <main className="paper-texture-bg min-h-screen text-white p-4 sm:p-6 lg:p-8 flex flex-col gap-6 selection:bg-white selection:text-navy-950">
-      {/* ─── Hero Header Bar ─── */}
-      <header className="paper-card-white rounded-2xl p-6 border border-navy-200 shadow-paper-xl relative overflow-hidden">
-        <div className="paper-fold-corner" />
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => setShowLanding(true)}
-                className="text-2xl font-black tracking-tight text-navy-950 font-serif hover:opacity-80 transition-opacity"
-              >
-                MURMUR
-              </button>
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-navy-950 text-white shadow-sm uppercase tracking-wide">
-                Console Active
-              </span>
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-navy-50 text-navy-950 border border-navy-300">
-                Track 02 Swarms
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-navy-900 font-sans max-w-3xl leading-relaxed font-semibold">
-              Live Correction Propagation for DevSecOps Agent Swarms — When a human overrides one agent mid-flight, Murmur traces the decision DAG and re-invokes <span className="underline decoration-navy-400 font-black">only affected downstream agents</span> without full pipeline restarts.
-            </p>
-          </div>
+          <Link
+            href="/console"
+            className="hidden items-center bg-[#0083ff] px-[24px] font-semibold text-white transition-opacity hover:opacity-80 md:inline-flex"
+            style={{ height: 44, fontSize: 15 }}
+          >
+            Open Console
+          </Link>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={handleStartPipeline}
-              disabled={isProcessing}
-              className={clsx(
-                "flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-mono font-bold shadow-lg transition-all",
-                "bg-navy-950 text-white hover:bg-navy-850 hover:scale-[1.02] active:scale-[0.98]",
-                isProcessing && "opacity-50 cursor-not-allowed hover:scale-100"
-              )}
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{pipeline.phase === "idle" ? "Spawn Swarm Pipeline" : "Re-run Initial Swarm"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={isProcessing}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-mono font-semibold bg-white border border-navy-300 text-navy-900 hover:bg-navy-50 hover:border-navy-900 shadow-sm transition-all"
-              title="Reset swarm to idle state"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Reset</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowLanding(true)}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-mono font-semibold bg-navy-900 text-white border border-navy-800 hover:bg-navy-850 transition-all"
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Portal</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className="flex h-[44px] w-[44px] items-center justify-center border border-white/10 text-white md:hidden"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            {menuOpen ? <X className="h-[20px] w-[20px]" /> : <Menu className="h-[20px] w-[20px]" />}
+          </button>
         </div>
+
+        {menuOpen && (
+          <div className="flex flex-col gap-[2px] border-t border-white/10 bg-[#000000] px-[30px] pb-[30px] pt-[20px] md:hidden">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+                className="block py-[10px] text-[16px] font-medium text-white/60 hover:text-white"
+              >
+                {link.label}
+              </a>
+            ))}
+            <Link
+              href="/console"
+              className="mt-[20px] block bg-[#0083ff] px-[24px] py-[12px] text-center text-[15px] font-semibold text-white"
+            >
+              Open Console
+            </Link>
+          </div>
+        )}
       </header>
 
-      {/* ─── Incident Context Dispatch Bar ─── */}
-      <section className="paper-card-navy rounded-xl p-4 border border-navy-700/80 flex flex-wrap items-center justify-between gap-3 text-xs shadow-paper">
-        <div className="flex items-center gap-3">
-          <span className="flex h-3 w-3 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
-          </span>
-          <div className="flex flex-wrap items-center gap-2 font-mono">
-            <span className="font-bold text-white uppercase tracking-wider">INCIDENT DOSSIER:</span>
-            <span className="bg-white text-navy-950 px-2.5 py-0.5 rounded font-bold shadow-sm">
-              CVE-2024-3094
-            </span>
-            <span className="text-white font-semibold">XZ Utils Backdoor (CVSS 10.0 Critical)</span>
-          </div>
-        </div>
+      {/* ─── HERO — full-viewport WebGL shader ──────────── */}
+      <Hero
+        trustBadge={{
+          text: "Dependency-aware correction cascading",
+          icons: ["✦"]
+        }}
+        headline={{
+          line1: "Corrections propagate.",
+          line2: "Not restarts."
+        }}
+        subtitle="When a human overrides one agent mid-flight, Murmur traces the decision dependency graph and re-runs only the agents that depend on it — leaving everything else intact."
+        buttons={{
+          primary: {
+            text: "Open Swarm Console",
+            onClick: () => { window.location.href = "/console"; },
+          },
+          secondary: {
+            text: "How it works ↓",
+            onClick: () => {
+              document.getElementById("product")?.scrollIntoView({ behavior: "smooth" });
+            },
+          },
+        }}
+      />
 
-        <div className="flex items-center gap-5 text-white font-mono text-[11px]">
-          <div className="flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-white" />
-            <span>4 Swarm Agents</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <GitFork className="w-3.5 h-3.5 text-white" />
-            <span>Deterministic DAG</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-white" />
-            <span>Selective Cascade BFS</span>
+      {/* ─── PIPELINE PREVIEW ───────────────────────── */}
+      <section
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingTop: 0, paddingBottom: 100 }}
+        aria-label="Pipeline preview"
+      >
+        <div className="w-full border border-[#222222] bg-[#141414]" style={{ padding: 54 }}>
+          <p className="mb-[30px] text-[12px] font-semibold uppercase tracking-widest text-white/40">
+            Live pipeline · CVE-2024-3094 · After correction to Triage
+          </p>
+          <div className="flex w-full items-stretch gap-0">
+            {PIPELINE.map((card, i) => (
+              <PipelineCard key={card.id} card={card} isLast={i === PIPELINE.length - 1} />
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ─── Swarm DAG Pipeline Canvas ─── */}
-      <section className="paper-card-navy rounded-2xl p-6 border border-white/10 shadow-paper-xl relative">
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-navy-700/80">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-white" />
-            <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-white">
-              Live Agent Dependency Graph & Swarm State
-            </h2>
-          </div>
-          <div className="flex items-center gap-3 text-[11px] font-mono text-white">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-white border border-navy-400 animate-pulse"></span> Running
-            </span>
-            <span className="flex items-center gap-1.5 font-bold">
-              <span className="w-2.5 h-2.5 rounded-full bg-navy-950 border border-white"></span> Resolved
-            </span>
-            <span className="flex items-center gap-1.5 font-bold">
-              <span className="w-2.5 h-2.5 rounded-full bg-white border border-dashed border-navy-950"></span> Cascade Stale
-            </span>
-          </div>
-        </div>
-
-        <PipelineView
-          agents={pipeline.agents}
-          flashingAgents={flashingAgents}
-          activeArrows={activeArrows}
-          onCorrect={(agentId, text) => handlePropagateCorrection(agentId as AgentId, text)}
+      {/* ─── FEATURE SECTIONS ───────────────────────── */}
+      <section
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingTop: 162, paddingBottom: 162 }}
+        id="product"
+      >
+        <FeatureSection
+          reverse={false}
+          points={[
+            "Hardcoded dependency graph",
+            "Plain BFS traversal",
+            "No LLM call to decide who's affected",
+          ]}
+          heading="Deterministic, not guessed"
+          paragraph="Every dependency is known ahead of time. When a correction lands, a plain graph traversal — not another model call — decides exactly who's affected."
+          visual={<VisualGraph />}
         />
       </section>
 
-      {/* ─── Intervention & Demo Beats Toolbar ─── */}
-      <section>
-        <CorrectionInput
-          onInjectPreset={handlePreset}
-          onCustomCorrection={(agentId, text) => handlePropagateCorrection(agentId, text)}
-          disabled={isProcessing || pipeline.phase === "idle"}
+      <div className="mx-auto w-full px-[30px] lg:px-[72px]" style={{ maxWidth: 1280 }}>
+        <div style={{ height: 1, background: "#222222" }} />
+      </div>
+
+      <section
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingTop: 162, paddingBottom: 162 }}
+      >
+        <FeatureSection
+          reverse={true}
+          points={[
+            "Only downstream agents re-run",
+            "Upstream work stays valid",
+            "No wasted compute",
+          ]}
+          heading="Selective cascade, not restart"
+          paragraph="Correcting one agent doesn't blow away the whole run. Only the agents that actually depended on the change redo their work — everything else holds."
+          visual={<VisualCascade />}
         />
       </section>
 
-      {/* ─── Bottom Panels: Event Stream & Provenance Trail ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Swarm Event Log */}
-        <div className="lg:col-span-7">
-          <EventLog logs={pipeline.log} onClear={() => setPipeline((p) => ({ ...p, log: [] }))} />
-        </div>
+      <div className="mx-auto w-full px-[30px] lg:px-[72px]" style={{ maxWidth: 1280 }}>
+        <div style={{ height: 1, background: "#222222" }} />
+      </div>
 
-        {/* Right: Provenance Trail & Value Proposition */}
-        <div className="lg:col-span-5 flex flex-col gap-4">
-          {/* White Paper Provenance Sheet */}
-          <div className="paper-card-navy rounded-2xl p-5 border border-white/10 shadow-paper-lg relative overflow-hidden">
-            <div className="paper-fold-corner" />
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-white" />
-                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
-                  Correction Provenance Trail
-                </h3>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#9a8afb] text-black rounded shadow-sm">
-                {pipeline.corrections.length} recorded
+      <section
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingTop: 162, paddingBottom: 162 }}
+      >
+        <FeatureSection
+          reverse={false}
+          points={[
+            "Correct any agent mid-flight",
+            "Full audit trail",
+            "Every override logged",
+          ]}
+          heading="Human stays in control"
+          paragraph="Full autonomy isn't trusted yet, and it shouldn't be. Every correction is a deliberate human action, and every override is recorded."
+          visual={<VisualCorrection />}
+        />
+      </section>
+
+      {/* ─── HOW IT WORKS ───────────────────────────── */}
+      <section
+        id="how-it-works"
+        className="mx-auto w-full scroll-mt-[80px] px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingTop: 162, paddingBottom: 162 }}
+      >
+        <h2 className="font-bold text-white" style={{ fontSize: 40, marginBottom: 72 }}>
+          How it works
+        </h2>
+        <div className="grid grid-cols-1 gap-[44px] sm:grid-cols-2 lg:grid-cols-4">
+          {STEPS.map((step) => (
+            <div key={step.n} className="flex flex-col">
+              <span className="font-bold text-[#0083ff]" style={{ fontSize: 48, lineHeight: 1 }}>
+                {step.n}
               </span>
+              <h3 className="font-semibold text-white" style={{ fontSize: 18, marginTop: 20, lineHeight: 1.3 }}>
+                {step.heading}
+              </h3>
+              <p className="text-white/50" style={{ fontSize: 14, marginTop: 12, lineHeight: 1.6 }}>
+                {step.desc}
+              </p>
             </div>
+          ))}
+        </div>
+      </section>
 
-            <div className="mt-3 space-y-3 max-h-[160px] overflow-y-auto pr-1">
-              {pipeline.corrections.length === 0 ? (
-                <div className="text-center py-6 text-[11px] text-[#a49db5] font-mono italic font-bold">
-                  No overrides applied yet. Trigger Beat 1 or Beat 2 above to observe the provenance audit trail.
-                </div>
-              ) : (
-                pipeline.corrections.map((corr, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl bg-black/30 border border-white/10 text-xs font-mono space-y-1.5 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-white font-bold uppercase tracking-wide">
-                        {corr.agentId} Overridden
-                      </span>
-                      <span className="text-[#a49db5] font-bold">
-                        {new Date(corr.timestamp).toLocaleTimeString([], {
-                          hour12: false,
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-[#eaeaf0] text-[11px] font-sans font-semibold">"{corr.correctionText}"</p>
-                    <div className="flex items-center gap-1.5 text-[10px] text-[#c2bcd2] pt-1 border-t border-white/10">
-                      <span className="font-bold">Affected Downstream:</span>
-                      <span className="text-white font-black underline">
-                        {corr.downstreamAffected.join(", ") || "none"}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Deep Navy Swarm Insight Card */}
-          <div className="paper-card-navy rounded-2xl p-5 border border-white/10 shadow-paper flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-mono font-bold text-white">
-              <Radio className="w-4 h-4 text-white animate-pulse" />
-              <span>Architectural Insight</span>
-            </div>
-            <p className="text-xs text-navy-100 leading-relaxed font-sans font-medium">
-              Unlike static restarts (e.g. re-running the full swarm from Triage), Murmur isolates the changed sub-DAG via BFS, preserving valid upstream context and saving compute & latency.
+      {/* ─── CTA BAND ────────────────────────────────── */}
+      <section
+        id="docs"
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingBottom: 100 }}
+        aria-label="Open swarm console"
+      >
+        <div
+          className="flex flex-col items-start justify-between gap-[30px] border border-[#222222] bg-[#141414] sm:flex-row sm:items-center"
+          style={{ padding: 54 }}
+        >
+          <div>
+            <h2 className="font-bold text-white" style={{ fontSize: 28 }}>
+              Open the live swarm console
+            </h2>
+            <p className="mt-[10px] text-[14px] text-white/50">
+              Run CVE-2024-3094, submit a correction, watch the cascade propagate in real time.
             </p>
           </div>
+          <Link
+            href="/console"
+            className="inline-flex shrink-0 items-center gap-[10px] bg-[#0083ff] px-[28px] font-semibold text-white transition-opacity hover:opacity-80"
+            style={{ height: 54, fontSize: 16 }}
+          >
+            Open Console
+            <ArrowRight className="h-[16px] w-[16px]" />
+          </Link>
         </div>
       </section>
-    </main>
+
+      {/* ─── POWERED BY ──────────────────────────────── */}
+      <section
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{ maxWidth: 1280, paddingBottom: 100 }}
+        aria-label="Powered by"
+      >
+        <p className="font-medium uppercase tracking-widest text-white/40" style={{ fontSize: 12, marginBottom: 30 }}>
+          Powered by
+        </p>
+        <div className="grid grid-cols-3 gap-[44px] sm:grid-cols-3">
+          {PARTNERS.map((p) => (
+            <div key={p.name}>
+              <p className="text-[16px] font-semibold text-white">{p.name}</p>
+              <p className="mt-[4px] text-[13px] text-white/40">{p.detail}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── FOOTER ──────────────────────────────────── */}
+      <footer
+        className="mx-auto w-full px-[30px] lg:px-[72px]"
+        style={{
+          maxWidth: 1280,
+          borderTop: "1px solid #222222",
+          paddingTop: 44,
+          paddingBottom: 44,
+        }}
+      >
+        <div className="flex flex-col items-start justify-between gap-[24px] sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-[30px]">
+            <a href="#home" aria-label="Murmur home">
+              <MurmurMark size={24} />
+            </a>
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="text-[13px] text-white/40 transition-colors hover:text-white"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+          <p className="text-[12px] text-white/30">Built for Track 02 — Tenori Stateless Hackathon</p>
+        </div>
+      </footer>
+    </div>
   );
 }

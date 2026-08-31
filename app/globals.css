@@ -1,174 +1,159 @@
+/* ─── Font ─────────────────────────────────────────────── */
+@import url("https://api.fontshare.com/v2/css?f[]=nohemi@300,400,500,600,700&display=swap");
+
+/* ─── Tailwind ─────────────────────────────────────────── */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap");
-
+/* ─── Design tokens ────────────────────────────────────── */
 :root {
-  --navy-950: #020610;
-  --navy-900: #040d1f;
-  --navy-850: #07152e;
-  --navy-800: #091a38;
-  --navy-700: #0e2754;
-  --navy-600: #143775;
-  --navy-500: #1b499c;
-  --navy-400: #3164c2;
-  --navy-300: #5786db;
-  --navy-200: #8bb1f2;
-  --navy-100: #cce0ff;
-  --navy-50: #f0f6ff;
+  --bg:             #000000;
+  --surface:        #141414;
+  --accent:         #0083ff;
+  --text:           #ffffff;
+  --text-secondary: rgba(255,255,255,0.7);
+  --text-tertiary:  rgba(255,255,255,0.4);
+  --text-muted:     rgba(255,255,255,0.25);
+  --border:         #222222;
+  --done:           #22c55e;
+  --stale:          #eab308;
 
-  --pure-white: #ffffff;
-  --off-white: #f8fafc;
-  --paper-edge: #cbd5e1;
+  /* spacing snap grid */
+  --sp-2:   2px;
+  --sp-30:  30px;
+  --sp-44:  44px;
+  --sp-48:  48px;
+  --sp-54:  54px;
+  --sp-72:  72px;
+  --sp-84:  84px;
+  --sp-88:  88px;
+  --sp-100: 100px;
 
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", Courier, monospace;
+  /* radius snap grid */
+  --r-3:  3px;
+  --r-9:  9px;
+  --r-12: 12px;
+  --r-16: 16px;
+  --r-20: 20px;
+  --r-24: 24px;
+
+  /* motion snap grid */
+  --t-250: 250ms;
+  --t-300: 300ms;
+  --t-500: 500ms;
+}
+
+/* ─── Base reset ───────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html,
 body {
   min-height: 100vh;
-  margin: 0;
-  font-family: var(--font-sans);
-  background-color: #000000;
-  color: var(--pure-white);
+  background: #000000;
+  color: #ffffff;
+  font-family: Nohemi, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
 }
 
-.paper-texture-bg {
-  background-color: #000000;
-  background-image:
-    radial-gradient(circle at top, rgba(154, 138, 251, 0.12) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 1) 100%);
-  background-size: cover, cover;
-  background-position: center top, center;
-  background-repeat: no-repeat, no-repeat;
+::selection {
+  background: #0083ff;
+  color: #000000;
 }
 
-.paper-card-white {
-  background-color: #ffffff;
-  background-image: none;
-  color: var(--navy-950);
-  position: relative;
-  box-shadow: 
-    0 1px 3px 0 rgba(6, 16, 36, 0.06),
-    0 16px 36px -4px rgba(6, 16, 36, 0.18),
-    0 8px 16px -6px rgba(6, 16, 36, 0.12),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 2px 4px rgba(255, 255, 255, 0.98);
+/* ─── Keyframes ────────────────────────────────────────── */
+
+/* status badge pulse — running / stale / rerunning */
+@keyframes murmur-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
 }
 
-.paper-card-navy {
-  background-color: #1e1c26;
-  background-image: none;
-  color: var(--pure-white);
-  position: relative;
-  box-shadow: 
-    0 1px 3px 0 rgba(0, 0, 0, 0.35),
-    0 16px 40px -8px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    inset 0 1px 2px rgba(255, 255, 255, 0.22);
+/* cascade dot travels left→right along an arrow */
+@keyframes murmur-travel {
+  0%   { transform: translateX(0);    opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(22px); opacity: 0; }
 }
 
-/* Tactile paper fold corner accent */
-.paper-fold-corner {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 22px 22px 0;
-  border-color: transparent rgba(6, 16, 36, 0.15) transparent transparent;
-  pointer-events: none;
+/* entrance animation — event log rows */
+@keyframes murmur-fadein {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* ─── CSS 3D Agent Swarm Visualizer ─── */
-.scene-3d {
-  perspective: 1000px;
-  transform-style: preserve-3d;
+/* ─── Shader-hero entrance animations ──────────────────── */
+
+@keyframes hero-fade-down {
+  from { opacity: 0; transform: translateY(-20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.sphere-container-3d {
-  width: 240px;
-  height: 240px;
-  position: relative;
-  transform-style: preserve-3d;
-  animation: rotateSphere 20s linear infinite;
+@keyframes hero-fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes rotateSphere {
-  0% { transform: rotateY(0deg) rotateX(15deg); }
-  100% { transform: rotateY(360deg) rotateX(15deg); }
+/* ─── Utility classes ──────────────────────────────────── */
+
+/* applied to pulsing status badge spans */
+.motion-pulse {
+  animation: murmur-pulse 500ms ease-in-out infinite;
 }
 
-.ring-3d {
-  position: absolute;
-  inset: 0;
-  border: 1.5px dashed rgba(255, 255, 255, 0.25);
-  border-radius: 50%;
-  transform-style: preserve-3d;
+/* the dot that rides along the connector line */
+.cascade-dot {
+  animation: murmur-travel 500ms ease-in-out infinite;
 }
 
-.ring-3d-1 {
-  transform: rotateY(0deg);
+/* event log row entrance */
+.log-row {
+  animation: murmur-fadein 250ms ease-out both;
 }
 
-.ring-3d-2 {
-  transform: rotateY(60deg);
-  border-color: rgba(255, 255, 255, 0.35);
+/* shader-hero content entrances */
+.hero-fade-down {
+  animation: hero-fade-down 0.8s ease-out both;
 }
 
-.ring-3d-3 {
-  transform: rotateY(120deg);
-  border-color: rgba(255, 255, 255, 0.15);
+.hero-fade-up {
+  animation: hero-fade-up 0.8s ease-out both;
+  opacity: 0;
 }
 
-.node-3d {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background-color: var(--pure-white);
-  border: 2px solid var(--navy-950);
-  border-radius: 50%;
-  box-shadow: 0 0 15px var(--pure-white);
-}
+.animation-delay-200 { animation-delay: 0.2s; }
+.animation-delay-400 { animation-delay: 0.4s; }
+.animation-delay-600 { animation-delay: 0.6s; }
+.animation-delay-800 { animation-delay: 0.8s; }
 
-.node-triage { top: 10%; left: 50%; transform: translate(-50%, -50%); }
-.node-remediation { top: 50%; right: 10%; transform: translate(50%, -50%); }
-.node-test { bottom: 10%; left: 50%; transform: translate(-50%, 50%); }
-.node-deploy { top: 50%; left: 10%; transform: translate(-50%, -50%); }
-
-.core-3d {
-  position: absolute;
-  inset: 70px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(14, 39, 84, 0.8) 70%);
-  border: 2px solid var(--pure-white);
-  border-radius: 50%;
-  box-shadow: 0 0 40px rgba(255, 255, 255, 0.5);
-  animation: pulseCore 3s ease-in-out infinite;
-}
-
-@keyframes pulseCore {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.08); opacity: 1; box-shadow: 0 0 60px rgba(255, 255, 255, 0.7); }
-}
-
-/* Custom scrollbar */
+/* ─── Scrollbar ────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #040d1f;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #143775;
-  border-radius: 4px;
+  background: #333333;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #1b499c;
+  background: #555555;
+}
+
+/* ─── Focus ring ───────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #0083ff;
+  outline-offset: 2px;
 }
